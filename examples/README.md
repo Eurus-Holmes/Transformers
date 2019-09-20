@@ -8,7 +8,8 @@ similar API between the different models.
 | [Language Model fine-tuning](#language-model-fine-tuning) | Fine-tuning the library models for language modeling on a text dataset. Causal language modeling for GPT/GPT-2, masked language modeling for BERT/RoBERTa. |
 | [Language Generation](#language-generation) | Conditional text generation using the auto-regressive models of the library: GPT, GPT-2, Transformer-XL and XLNet.                                         |
 | [GLUE](#glue) | Examples running BERT/XLM/XLNet/RoBERTa on the 9 GLUE tasks. Examples feature distributed training as well as half-precision.                              |
-| [SQuAD](#squad) | Using BERT for question answering, examples with distributed training.                                                                                     |
+| [SQuAD](#squad) | Using BERT for question answering, examples with distributed training.                                                                                  |
+| [Multiple Choice](#multiple choice) | Examples running BERT/XLNet/RoBERTa on the SWAG/RACE/ARC tasks. 
 
 ## Language model fine-tuning
 
@@ -96,20 +97,20 @@ Fine-tuning the library models for sequence classification on the GLUE benchmark
 Evaluation](https://gluebenchmark.com/). This script can fine-tune the following models: BERT, XLM, XLNet and RoBERTa. 
 
 GLUE is made up of a total of 9 different tasks. We get the following results on the dev set of the benchmark with an
-uncased  BERT base model (the checkpoint `bert-base-uncased`). All experiments ran on 8  V100 GPUs with a total train
+uncased  BERT base model (the checkpoint `bert-base-uncased`). All experiments ran on 8 V100 GPUs with a total train
 batch size of 24. Some of these tasks have a small dataset and training can lead to high variance in the results
 between different runs. We report the median on 5 runs (with different seeds) for each of the metrics.
 
 | Task  | Metric                       | Result      |
 |-------|------------------------------|-------------|
-| CoLA  | Matthew's corr               | 55.75       |
-| SST-2 | Accuracy                     | 92.09       |
-| MRPC  | F1/Accuracy                  | 90.48/86.27 |
-| STS-B | Person/Spearman corr.        | 89.03/88.64 |
-| QQP   | Accuracy/F1                  | 90.92/87.72 |
-| MNLI  | Matched acc./Mismatched acc. | 83.74/84.06 |
-| QNLI  | Accuracy                     | 91.07       |
-| RTE   | Accuracy                     | 68.59       |
+| CoLA  | Matthew's corr               | 48.87       |
+| SST-2 | Accuracy                     | 91.74       |
+| MRPC  | F1/Accuracy                  | 90.70/86.27 |
+| STS-B | Person/Spearman corr.        | 91.39/91.04 |
+| QQP   | Accuracy/F1                  | 90.79/87.66 |
+| MNLI  | Matched acc./Mismatched acc. | 83.70/84.83 |
+| QNLI  | Accuracy                     | 89.31       |
+| RTE   | Accuracy                     | 71.43       |
 | WNLI  | Accuracy                     | 43.66       |
 
 Some of these results are significantly different from the ones reported on the test set
@@ -280,6 +281,40 @@ The results  are the following:
   eval_loss = 0.45516540421714036
   global_step = 18408
   loss = 0.04755385363816904
+```
+
+##Multiple Choice
+
+Based on the script [`run_multiple_choice.py`]().
+
+#### Fine-tuning on SWAG
+Download [swag](https://github.com/rowanz/swagaf/tree/master/data) data
+
+```
+#training on 4 tesla V100(16GB) GPUS
+export SWAG_DIR=/path/to/swag_data_dir
+python ./examples/single_model_scripts/run_multiple_choice.py \
+--model_type roberta \
+--task_name swag \
+--model_name_or_path roberta-base \
+--do_train \
+--do_eval \
+--do_lower_case \
+--data_dir $SWAG_DIR \
+--learning_rate 5e-5 \
+--num_train_epochs 3 \
+--max_seq_length 80 \
+--output_dir models_bert/swag_base \
+--per_gpu_eval_batch_size=16 \
+--per_gpu_train_batch_size=16 \
+--gradient_accumulation_steps 2 \
+--overwrite_output
+```
+Training with the defined hyper-parameters yields the following results:
+```
+***** Eval results *****
+eval_acc = 0.8338998300509847
+eval_loss = 0.44457291918821606
 ```
 
 ## SQuAD
