@@ -44,26 +44,26 @@ XLM
 ``TFXLMModel``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: pytorch_transformers.TFXLMModel
+.. autoclass:: transformers.TFXLMModel
     :members:
 
 
 ``TFXLMWithLMHeadModel``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: pytorch_transformers.TFXLMWithLMHeadModel
+.. autoclass:: transformers.TFXLMWithLMHeadModel
     :members:
 
 
 ``TFXLMForSequenceClassification``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: pytorch_transformers.TFXLMForSequenceClassification
+.. autoclass:: transformers.TFXLMForSequenceClassification
     :members:
 
 
 ``TFXLMForQuestionAnsweringSimple``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: pytorch_transformers.TFXLMForQuestionAnsweringSimple
+.. autoclass:: transformers.TFXLMForQuestionAnsweringSimple
     :members:
