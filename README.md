@@ -56,7 +56,7 @@ Choose the right framework for every part of a model's lifetime
 | [Quick tour: Usage](#quick-tour) | Tokenizers & models usage: Bert and GPT-2 |
 | [Quick tour: TF 2.0 and PyTorch ](#Quick-tour-TF-20-training-and-PyTorch-interoperability) | Train a TF 2.0 model in 10 lines of code, load it in PyTorch |
 | [Quick tour: Fine-tuning/usage scripts](#quick-tour-of-the-fine-tuningusage-scripts) | Using provided scripts: GLUE, SQuAD and Text generation |
-| [Migrating from pytorch-transformers to transformers](#Migrating-from-pytorch-transformers-to-transformers) | Migrating your code from pytorch-pretrained-bert to transformers |
+| [Migrating from pytorch-transformers to transformers](#Migrating-from-pytorch-transformers-to-transformers) | Migrating your code from pytorch-transformers to transformers |
 | [Migrating from pytorch-pretrained-bert to pytorch-transformers](#Migrating-from-pytorch-pretrained-bert-to-transformers) | Migrating your code from pytorch-pretrained-bert to transformers |
 | [Documentation](https://huggingface.co/transformers/) | Full API documentation and more |
 
@@ -67,7 +67,7 @@ This repo is tested on Python 2.7 and 3.5+ (examples are tested only on python 3
 ### With pip
 
 First you need to install one of, or both, TensorFlow 2.0 and PyTorch.
-Please refere to [TensorFlow installation page](https://www.tensorflow.org/install/pip#tensorflow-2.0-rc-is-available) and/or [PyTorch installation page](https://pytorch.org/get-started/locally/#start-locally) regarding the specific install command for your platform.
+Please refer to [TensorFlow installation page](https://www.tensorflow.org/install/pip#tensorflow-2.0-rc-is-available) and/or [PyTorch installation page](https://pytorch.org/get-started/locally/#start-locally) regarding the specific install command for your platform.
 
 When TensorFlow 2.0 and/or PyTorch has been installed, 🤗 Transformers can be installed using pip as follows:
 
@@ -78,7 +78,7 @@ pip install transformers
 ### From source
 
 Here also, you first need to install one of, or both, TensorFlow 2.0 and PyTorch.
-Please refere to [TensorFlow installation page](https://www.tensorflow.org/install/pip#tensorflow-2.0-rc-is-available) and/or [PyTorch installation page](https://pytorch.org/get-started/locally/#start-locally) regarding the specific install command for your platform.
+Please refer to [TensorFlow installation page](https://www.tensorflow.org/install/pip#tensorflow-2.0-rc-is-available) and/or [PyTorch installation page](https://pytorch.org/get-started/locally/#start-locally) regarding the specific install command for your platform.
 
 When TensorFlow 2.0 and/or PyTorch has been installed, you can install from source by cloning the repository and running:
 
@@ -423,7 +423,7 @@ Here is a quick summary of what you should take care of when migrating from `pyt
 
 ### Models always output `tuples`
 
-The main breaking change when migrating from `pytorch-pretrained-bert` to `transformers` is that the models forward method always outputs a `tuple` with various elements depending on the model and the configuration parameters.
+The main breaking change when migrating from `pytorch-pretrained-bert` to `transformers` is that every model's forward method always outputs a `tuple` with various elements depending on the model and the configuration parameters.
 
 The exact content of the tuples for each model is detailed in the models' docstrings and the [documentation](https://huggingface.co/transformers/).
 
@@ -459,9 +459,9 @@ By enabling the configuration option `output_hidden_states`, it was possible to 
 
 Breaking change in the `from_pretrained()` method:
 
-1. Models are now set in evaluation mode by default when instantiated with the `from_pretrained()` method. To train them don't forget to set them back in training mode (`model.train()`) to activate the dropout modules.
+1. Models are now set in evaluation mode by default when instantiated with the `from_pretrained()` method. To train them, don't forget to set them back in training mode (`model.train()`) to activate the dropout modules.
 
-2. The additional `*input` and `**kwargs` arguments supplied to the `from_pretrained()` method used to be directly passed to the underlying model's class `__init__()` method. They are now used to update the model configuration attribute instead which can break derived model classes build based on the previous `BertForSequenceClassification` examples. We are working on a way to mitigate this breaking change in [#866](https://github.com/huggingface/transformers/pull/866) by forwarding the the model `__init__()` method (i) the provided positional arguments and (ii) the keyword arguments which do not match any configuration class attributes.
+2. The additional `*input` and `**kwargs` arguments supplied to the `from_pretrained()` method used to be directly passed to the underlying model's class `__init__()` method. They are now used to update the model configuration attribute instead, which can break derived model classes built based on the previous `BertForSequenceClassification` examples. We are working on a way to mitigate this breaking change in [#866](https://github.com/huggingface/transformers/pull/866) by forwarding the the model's `__init__()` method (i) the provided positional arguments and (ii) the keyword arguments which do not match any configuration class attributes.
 
 Also, while not a breaking change, the serialization methods have been standardized and you probably should switch to the new method `save_pretrained(save_directory)` if you were using any other serialization method before.
 
