@@ -86,6 +86,17 @@ When TensorFlow 2.0 and/or PyTorch has been installed, you can install from sour
 pip install [--editable] .
 ```
 
+### Run the examples
+
+Examples are included in the repository but are not shipped with the library.
+Therefore, in order to run the latest versions of the examples you also need to install from source. To do so, create a new virtual environment and follow these steps:
+
+```bash
+git clone git@github.com:huggingface/transformers
+cd transformers
+pip install [--editable] .
+```
+
 ### Tests
 
 A series of tests are included for the library and the example scripts. Library tests can be found in the [tests folder](https://github.com/huggingface/transformers/tree/master/transformers/tests) and examples tests in the [examples folder](https://github.com/huggingface/transformers/tree/master/examples).
@@ -252,6 +263,11 @@ print("sentence_2 is", "a paraphrase" if pred_2 else "not a paraphrase", "of sen
 ```
 
 ## Quick tour of the fine-tuning/usage scripts
+
+**Important**  
+Before running the fine-tuning scripts, please read the
+[instructions](#run-the-examples) on how to
+setup your environment to run the examples.
 
 The library comprises several example scripts with SOTA performances for NLU and NLG tasks:
 
