@@ -25,10 +25,11 @@ from .file_utils import (TRANSFORMERS_CACHE, PYTORCH_TRANSFORMERS_CACHE, PYTORCH
 from .data import (is_sklearn_available,
                    InputExample, InputFeatures, DataProcessor,
                    glue_output_modes, glue_convert_examples_to_features,
-                   glue_processors, glue_tasks_num_labels)
+                   glue_processors, glue_tasks_num_labels,
+                   xnli_output_modes, xnli_processors, xnli_tasks_num_labels)
 
 if is_sklearn_available():
-    from .data import glue_compute_metrics
+    from .data import glue_compute_metrics, xnli_compute_metrics
 
 # Tokenizers
 from .tokenization_utils import (PreTrainedTokenizer)
@@ -117,7 +118,7 @@ if is_torch_available():
 
 # TensorFlow
 if is_tf_available():
-    from .modeling_tf_utils import TFPreTrainedModel, TFSharedEmbeddings, TFSequenceSummary
+    from .modeling_tf_utils import TFPreTrainedModel, TFSharedEmbeddings, TFSequenceSummary, shape_list
     from .modeling_tf_auto import (TFAutoModel, TFAutoModelForSequenceClassification, TFAutoModelForQuestionAnswering,
                                    TFAutoModelWithLMHead)
 
