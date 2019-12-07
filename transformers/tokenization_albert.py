@@ -66,7 +66,7 @@ class AlbertTokenizer(PreTrainedTokenizer):
     def __init__(self, vocab_file,
                  do_lower_case=True, remove_space=True, keep_accents=False,
                  bos_token="[CLS]", eos_token="[SEP]", unk_token="<unk>", sep_token="[SEP]",
-                 pad_token="<pad>", cls_token="[CLS]", mask_token="[MASK]>", **kwargs):
+                 pad_token="<pad>", cls_token="[CLS]", mask_token="[MASK]", **kwargs):
         super(AlbertTokenizer, self).__init__(bos_token=bos_token, eos_token=eos_token,
                                              unk_token=unk_token, sep_token=sep_token,
                                              pad_token=pad_token, cls_token=cls_token,
@@ -141,7 +141,7 @@ class AlbertTokenizer(PreTrainedTokenizer):
             pieces = self.sp_model.SampleEncodeAsPieces(text, 64, 0.1)
         new_pieces = []
         for piece in pieces:
-            if len(piece) > 1 and piece[-1] == ',' and piece[-2].isdigit():
+            if len(piece) > 1 and piece[-1] == str(',') and piece[-2].isdigit():
                 cur_pieces = self.sp_model.EncodeAsPieces(
                     piece[:-1].replace(SPIECE_UNDERLINE, ''))
                 if piece[0] != SPIECE_UNDERLINE and cur_pieces[0][0] == SPIECE_UNDERLINE:
@@ -225,9 +225,9 @@ class AlbertTokenizer(PreTrainedTokenizer):
         """
         Creates a mask from the two sequences passed to be used in a sequence-pair classification task.
         An ALBERT sequence pair mask has the following format:
-        0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 
-        | first sequence    | second sequence     
-        
+        0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1
+        | first sequence    | second sequence
+
         if token_ids_1 is None, only returns the first portion of the mask (0's).
         """
         sep = [self.sep_token_id]

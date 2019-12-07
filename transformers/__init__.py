@@ -1,4 +1,4 @@
-__version__ = "2.2.0"
+__version__ = "2.2.1"
 
 # Work around to update TensorFlow's absl.logging threshold which alters the
 # default Python logging output behavior when present.
@@ -86,9 +86,10 @@ if is_torch_available():
                                 CTRLLMHeadModel,
                                 CTRL_PRETRAINED_MODEL_ARCHIVE_MAP)
     from .modeling_xlnet import (XLNetPreTrainedModel, XLNetModel, XLNetLMHeadModel,
-                                XLNetForSequenceClassification, XLNetForMultipleChoice,
-                                XLNetForQuestionAnsweringSimple, XLNetForQuestionAnswering,
-                                load_tf_weights_in_xlnet, XLNET_PRETRAINED_MODEL_ARCHIVE_MAP)
+                                XLNetForSequenceClassification, XLNetForTokenClassification,
+                                XLNetForMultipleChoice, XLNetForQuestionAnsweringSimple,
+                                XLNetForQuestionAnswering, load_tf_weights_in_xlnet,
+                                XLNET_PRETRAINED_MODEL_ARCHIVE_MAP)
     from .modeling_xlm import (XLMPreTrainedModel , XLMModel,
                             XLMWithLMHeadModel, XLMForSequenceClassification,
                             XLMForQuestionAnswering, XLMForQuestionAnsweringSimple,
@@ -97,7 +98,7 @@ if is_torch_available():
                                 RobertaForSequenceClassification, RobertaForMultipleChoice,
                                 RobertaForTokenClassification,
                                 ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP)
-    from .modeling_distilbert import (DistilBertForMaskedLM, DistilBertModel,
+    from .modeling_distilbert import (DistilBertPreTrainedModel, DistilBertForMaskedLM, DistilBertModel,
                                 DistilBertForSequenceClassification, DistilBertForQuestionAnswering,
                                 DistilBertForTokenClassification,
                                 DISTILBERT_PRETRAINED_MODEL_ARCHIVE_MAP)
@@ -107,7 +108,7 @@ if is_torch_available():
                                 CAMEMBERT_PRETRAINED_MODEL_ARCHIVE_MAP)
     from .modeling_encoder_decoder import PreTrainedEncoderDecoder, Model2Model
 
-    from .modeling_albert import (AlbertModel, AlbertForMaskedLM, AlbertForSequenceClassification,
+    from .modeling_albert import (AlbertPreTrainedModel, AlbertModel, AlbertForMaskedLM, AlbertForSequenceClassification,
                                 AlbertForQuestionAnswering,
                                 load_tf_weights_in_albert, ALBERT_PRETRAINED_MODEL_ARCHIVE_MAP)
 
@@ -144,6 +145,7 @@ if is_tf_available():
     from .modeling_tf_xlnet import (TFXLNetPreTrainedModel, TFXLNetMainLayer,
                                     TFXLNetModel, TFXLNetLMHeadModel,
                                     TFXLNetForSequenceClassification,
+                                    TFXLNetForTokenClassification,
                                     TFXLNetForQuestionAnsweringSimple,
                                     TF_XLNET_PRETRAINED_MODEL_ARCHIVE_MAP)
 
@@ -162,6 +164,7 @@ if is_tf_available():
     from .modeling_tf_distilbert import (TFDistilBertPreTrainedModel, TFDistilBertMainLayer,
                                          TFDistilBertModel, TFDistilBertForMaskedLM,
                                          TFDistilBertForSequenceClassification,
+                                         TFDistilBertForTokenClassification,
                                          TFDistilBertForQuestionAnswering,
                                          TF_DISTILBERT_PRETRAINED_MODEL_ARCHIVE_MAP)
 
@@ -172,6 +175,8 @@ if is_tf_available():
     from .modeling_tf_albert import (TFAlbertPreTrainedModel, TFAlbertModel, TFAlbertForMaskedLM,
                                      TFAlbertForSequenceClassification,
                                     TF_ALBERT_PRETRAINED_MODEL_ARCHIVE_MAP)
+    # Optimization
+    from .optimization_tf import (WarmUp, create_optimizer, AdamWeightDecay, GradientAccumulator)
 
 # TF 2.0 <=> PyTorch conversion utilities
 from .modeling_tf_pytorch_utils import (convert_tf_weight_name_to_pt_weight_name,

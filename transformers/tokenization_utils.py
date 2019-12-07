@@ -22,6 +22,7 @@ import json
 import six
 import copy
 import itertools
+import re
 from io import open
 
 from .file_utils import cached_path, is_tf_available, is_torch_available
@@ -347,7 +348,7 @@ class PreTrainedTokenizer(object):
                     "We assumed '{}' was a path or url to a directory containing vocabulary files "
                     "named {} but couldn't find such vocabulary files at this path or url.".format(
                         pretrained_model_name_or_path, ', '.join(s3_models),
-                        pretrained_model_name_or_path, 
+                        pretrained_model_name_or_path,
                         list(cls.vocab_files_names.values())))
 
         # Get files from url, cache, or disk depending on the case
@@ -382,7 +383,8 @@ class PreTrainedTokenizer(object):
         # Did we saved some inputs and kwargs to reload ?
         tokenizer_config_file = resolved_vocab_files.pop('tokenizer_config_file', None)
         if tokenizer_config_file is not None:
-            init_kwargs = json.load(open(tokenizer_config_file, encoding="utf-8"))
+            with open(tokenizer_config_file, encoding="utf-8") as tokenizer_config_handle:
+                init_kwargs = json.load(tokenizer_config_handle)
             saved_init_inputs = init_kwargs.pop('init_inputs', ())
             if not init_inputs:
                 init_inputs = saved_init_inputs
@@ -407,7 +409,8 @@ class PreTrainedTokenizer(object):
             if args_name not in init_kwargs:
                 init_kwargs[args_name] = file_path
         if special_tokens_map_file is not None:
-            special_tokens_map = json.load(open(special_tokens_map_file, encoding="utf-8"))
+            with open(special_tokens_map_file, encoding="utf-8") as special_tokens_map_handle:
+                special_tokens_map = json.load(special_tokens_map_handle)
             for key, value in special_tokens_map.items():
                 if key not in init_kwargs:
                     init_kwargs[key] = value
@@ -421,7 +424,8 @@ class PreTrainedTokenizer(object):
 
         # Add supplementary tokens.
         if added_tokens_file is not None:
-            added_tok_encoder = json.load(open(added_tokens_file, encoding="utf-8"))
+            with open(added_tokens_file, encoding="utf-8") as added_tokens_handle:
+                added_tok_encoder = json.load(added_tokens_handle)
             added_tok_decoder = {v:k for k, v in added_tok_encoder.items()}
             tokenizer.added_tokens_encoder.update(added_tok_encoder)
             tokenizer.added_tokens_decoder.update(added_tok_decoder)
@@ -517,7 +521,7 @@ class PreTrainedTokenizer(object):
         to_add_tokens = []
         for token in new_tokens:
             assert isinstance(token, str) or (six.PY2 and isinstance(token, unicode))
-            if self.init_kwargs.get('do_lower_case', False):
+            if self.init_kwargs.get('do_lower_case', False) and token not in self.all_special_tokens:
                 token = token.lower()
             if token != self.unk_token and \
                     self.convert_tokens_to_ids(token) == self.convert_tokens_to_ids(self.unk_token) and \
@@ -612,8 +616,18 @@ class PreTrainedTokenizer(object):
 
             Take care of added tokens.
         """
+        def lowercase_text(t):
+            # convert non-special tokens to lowercase
+            escaped_special_toks = [re.escape(s_tok) for s_tok in self.all_special_tokens]
+            pattern = r'(^' + r'|'.join(escaped_special_toks) + r')|' + \
+                      r'(.+?)'
+            return re.sub(
+                pattern,
+                lambda m: m.groups()[0] or m.groups()[1].lower(),
+                t)
+
         if self.init_kwargs.get('do_lower_case', False):
-            text = text.lower()
+            text = lowercase_text(text)
 
         def split_on_token(tok, text):
             result = []
@@ -937,7 +951,7 @@ class PreTrainedTokenizer(object):
             logger.warning("Token indices sequence length is longer than the specified maximum sequence length "
                            "for this model ({} > {}). Running this sequence through the model will result in "
                            "indexing errors".format(len(ids), self.max_len))
-                           
+
         return encoded_inputs
 
     def truncate_sequences(self, ids, pair_ids=None, num_tokens_to_remove=0, truncation_strategy='longest_first', stride=0):
@@ -981,7 +995,6 @@ class PreTrainedTokenizer(object):
         return (ids, pair_ids, overflowing_tokens)
 
     def create_token_type_ids_from_sequences(self, token_ids_0, token_ids_1=None):
-        logger.warning("This tokenizer does not make use of special tokens.")
         if token_ids_1 is None:
             return len(token_ids_0) * [0]
         return [0] * len(token_ids_0) + [1] * len(token_ids_1)
@@ -994,7 +1007,6 @@ class PreTrainedTokenizer(object):
             single sequence: <s> X </s>
             pair of sequences: <s> A </s></s> B </s>
         """
-        logger.warning("This tokenizer does not make use of special tokens. Input is returned with no modification.")
         if token_ids_1 is None:
             return token_ids_0
         return token_ids_0 + token_ids_1
