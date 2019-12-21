@@ -589,7 +589,7 @@ class XLNetModel(XLNetPreTrainedModel):
 
         tokenizer = XLNetTokenizer.from_pretrained('xlnet-large-cased')
         model = XLNetModel.from_pretrained('xlnet-large-cased')
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids)
         last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
 
@@ -898,7 +898,7 @@ class XLNetLMHeadModel(XLNetPreTrainedModel):
             Labels for language modeling.
             Note that the labels **are shifted** inside the model, i.e. you can set ``lm_labels = input_ids``
             Indices are selected in ``[-1, 0, ..., config.vocab_size]``
-            All labels set to ``-1`` are ignored (masked), the loss is only
+            All labels set to ``-100`` are ignored (masked), the loss is only
             computed for labels in ``[0, ..., config.vocab_size]``
 
     Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
@@ -925,7 +925,7 @@ class XLNetLMHeadModel(XLNetPreTrainedModel):
         tokenizer = XLNetTokenizer.from_pretrained('xlnet-large-cased')
         model = XLNetLMHeadModel.from_pretrained('xlnet-large-cased')
         # We show how to setup inputs to predict a next token using a bi-directional context.
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is very <mask>")).unsqueeze(0)  # We will predict the masked token
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is very <mask>", add_special_tokens=True)).unsqueeze(0)  # We will predict the masked token
         perm_mask = torch.zeros((1, input_ids.shape[1], input_ids.shape[1]), dtype=torch.float)
         perm_mask[:, :, -1] = 1.0  # Previous tokens don't see last token
         target_mapping = torch.zeros((1, 1, input_ids.shape[1]), dtype=torch.float)  # Shape [1, 1, seq_length] => let's predict one token
@@ -947,6 +947,30 @@ class XLNetLMHeadModel(XLNetPreTrainedModel):
     def get_output_embeddings(self):
         return self.lm_loss
 
+    def prepare_inputs_for_generation(self, input_ids, **model_kwargs):
+        # Add dummy token at the end (no attention on this one)
+        dummy_token = torch.zeros((1, 1), dtype=torch.long, device=input_ids.device)
+        input_ids = torch.cat([input_ids, dummy_token], dim=1)
+
+        # Build permutation mask so that previous tokens don't see last token
+        perm_mask = torch.zeros(
+            (input_ids.shape[0], input_ids.shape[1], input_ids.shape[1]),
+            dtype=torch.float, device=input_ids.device
+        )
+        perm_mask[:, :, -1] = 1.0
+
+        # We'll only predict the last token
+        target_mapping = torch.zeros(
+            (input_ids.shape[0], 1, input_ids.shape[1]),
+            dtype=torch.float, device=input_ids.device
+        )
+        target_mapping[0, 0, -1] = 1.0
+
+        return {"input_ids": input_ids,
+                "perm_mask": perm_mask,
+                "target_mapping": target_mapping
+               }
+
     def forward(self, input_ids=None, attention_mask=None, mems=None, perm_mask=None, target_mapping=None,
                 token_type_ids=None, input_mask=None, head_mask=None, inputs_embeds=None, labels=None):
         transformer_outputs = self.transformer(input_ids,
@@ -965,7 +989,7 @@ class XLNetLMHeadModel(XLNetPreTrainedModel):
 
         if labels is not None:
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss(ignore_index=-1)
+            loss_fct = CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, logits.size(-1)),
                             labels.view(-1))
             outputs = (loss,) + outputs
@@ -1007,7 +1031,7 @@ class XLNetForSequenceClassification(XLNetPreTrainedModel):
 
         tokenizer = XLNetTokenizer.from_pretrained('xlnet-large-cased')
         model = XLNetForSequenceClassification.from_pretrained('xlnet-large-cased')
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
         labels = torch.tensor([1]).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids, labels=labels)
         loss, logits = outputs[:2]
@@ -1294,7 +1318,7 @@ class XLNetForQuestionAnsweringSimple(XLNetPreTrainedModel):
 
         tokenizer = XLMTokenizer.from_pretrained('xlm-mlm-en-2048')
         model = XLMForQuestionAnswering.from_pretrained('xlnet-large-cased')
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
         start_positions = torch.tensor([1])
         end_positions = torch.tensor([3])
         outputs = model(input_ids, start_positions=start_positions, end_positions=end_positions)
@@ -1409,7 +1433,7 @@ class XLNetForQuestionAnswering(XLNetPreTrainedModel):
 
         tokenizer =  XLNetTokenizer.from_pretrained('xlnet-large-cased')
         model = XLMForQuestionAnswering.from_pretrained('xlnet-large-cased')
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
+        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
         start_positions = torch.tensor([1])
         end_positions = torch.tensor([3])
         outputs = model(input_ids, start_positions=start_positions, end_positions=end_positions)
