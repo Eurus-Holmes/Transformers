@@ -55,11 +55,12 @@ Choose the right framework for every part of a model's lifetime
 | [Online demo](#online-demo) | Experimenting with this repo’s text generation capabilities |
 | [Quick tour: Usage](#quick-tour) | Tokenizers & models usage: Bert and GPT-2 |
 | [Quick tour: TF 2.0 and PyTorch ](#Quick-tour-TF-20-training-and-PyTorch-interoperability) | Train a TF 2.0 model in 10 lines of code, load it in PyTorch |
+| [Quick tour: pipelines](#quick-tour-of-pipelines) | Using Pipelines: Wrapper around tokenizer and models to use finetuned models |
 | [Quick tour: Fine-tuning/usage scripts](#quick-tour-of-the-fine-tuningusage-scripts) | Using provided scripts: GLUE, SQuAD and Text generation |
 | [Quick tour: Share your models ](#Quick-tour-of-model-sharing) | Upload and share your fine-tuned models with the community |
 | [Migrating from pytorch-transformers to transformers](#Migrating-from-pytorch-transformers-to-transformers) | Migrating your code from pytorch-transformers to transformers |
 | [Migrating from pytorch-pretrained-bert to pytorch-transformers](#Migrating-from-pytorch-pretrained-bert-to-transformers) | Migrating your code from pytorch-pretrained-bert to transformers |
-| [Documentation][(v2.2.0/v2.2.1/v2.2.2)](https://huggingface.co/transformers/v2.2.0) [(v2.1.1)](https://huggingface.co/transformers/v2.1.1) [(v2.0.0)](https://huggingface.co/transformers/v2.0.0) [(v1.2.0)](https://huggingface.co/transformers/v1.2.0) [(v1.1.0)](https://huggingface.co/transformers/v1.1.0) [(v1.0.0)](https://huggingface.co/transformers/v1.0.0) [(master)](https://huggingface.co/transformers) | Full API documentation and more |
+| [Documentation][(v2.3.0)](https://huggingface.co/transformers/v2.3.0)[(v2.2.0/v2.2.1/v2.2.2)](https://huggingface.co/transformers/v2.2.0) [(v2.1.1)](https://huggingface.co/transformers/v2.1.1) [(v2.0.0)](https://huggingface.co/transformers/v2.0.0) [(v1.2.0)](https://huggingface.co/transformers/v1.2.0) [(v1.1.0)](https://huggingface.co/transformers/v1.1.0) [(v1.0.0)](https://huggingface.co/transformers/v1.0.0) [(master)](https://huggingface.co/transformers) | Full API documentation and more |
 
 ## Installation
 
@@ -488,6 +489,36 @@ Finally, list all your files on S3:
 ```shell
 transformers-cli ls
 # List all your S3 objects.
+```
+
+## Quick tour of pipelines
+
+New in version `v2.3`: `Pipeline` are high-level objects which automatically handle tokenization, running your data through a transformers model
+and outputting the result in a structured object. 
+
+You can create `Pipeline` objects for the following down-stream tasks:
+
+ - `feature-extraction`: Generates a tensor representation for the input sequence
+ - `ner`: Generates named entity mapping for each word in the input sequence.
+ - `sentiment-analysis`: Gives the polarity (positive / negative) of the whole input sequence. 
+ - `question-answering`: Provided some context and a question refering to the context, it will extract the answer to the question
+ in the context.
+
+```python
+from transformers import pipeline
+
+# Allocate a pipeline for sentiment-analysis
+nlp = pipeline('sentiment-analysis')
+nlp('We are very happy to include pipeline into the transformers repository.')
+>>> {'label': 'POSITIVE', 'score': 0.99893874}
+
+# Allocate a pipeline for question-answering
+nlp = pipeline('question-answering')
+nlp({
+    'question': 'What is the name of the repository ?', 
+    'context': 'Pipeline have been included in the huggingface/transformers repository'
+})
+>>> {'score': 0.28756016668193496, 'start': 35, 'end': 59, 'answer': 'huggingface/transformers'}
 ```
 
 ## Migrating from pytorch-transformers to transformers
