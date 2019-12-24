@@ -454,12 +454,12 @@ class PreTrainedModel(nn.Module):
                     from transformers import load_tf2_checkpoint_in_pytorch_model
 
                     model = load_tf2_checkpoint_in_pytorch_model(model, resolved_archive_file, allow_missing_keys=True)
-                except ImportError as e:
+                except ImportError:
                     logger.error(
                         "Loading a TensorFlow model in PyTorch, requires both PyTorch and TensorFlow to be installed. Please see "
                         "https://pytorch.org/ and https://www.tensorflow.org/install/ for installation instructions."
                     )
-                    raise e
+                    raise
         else:
             # Convert old format to new format if needed from a PyTorch state_dict
             old_keys = []
@@ -958,7 +958,9 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=1.0, filter_value=-float("Inf")
         sorted_indices_to_remove[..., 0] = 0
 
         # scatter sorted tensors to original indexing
-        indices_to_remove = sorted_indices_to_remove.scatter(dim=1, index=sorted_indices, src=sorted_indices_to_remove)
+        indices_to_remove = sorted_indices_to_remove.scatter(
+            dim=1, index=sorted_indices, source=sorted_indices_to_remove
+        )
         logits[indices_to_remove] = filter_value
     return logits
 
