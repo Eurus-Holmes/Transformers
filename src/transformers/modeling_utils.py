@@ -728,7 +728,11 @@ class PreTrainedModel(nn.Module):
             if repetition_penalty != 1.0:
                 for i in range(batch_size):
                     for previous_tokens in set(input_ids[i].tolist()):
-                        next_token_logits[i, previous_tokens] /= repetition_penalty
+                        # if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
+                        if next_token_logits[i, previous_tokens] < 0:
+                            next_token_logits[i, previous_tokens] *= repetition_penalty
+                        else:
+                            next_token_logits[i, previous_tokens] /= repetition_penalty
 
             if do_sample:
                 # Temperature (higher temperature => more likely to sample low probability tokens)
@@ -807,7 +811,11 @@ class PreTrainedModel(nn.Module):
             if repetition_penalty != 1.0:
                 for i in range(batch_size * num_beams):
                     for previous_tokens in set(input_ids[i].tolist()):
-                        scores[i, previous_tokens] /= repetition_penalty
+                        # if score < 0 then repetition penalty has to multiplied to reduce the previous token probability
+                        if scores[i, previous_tokens] < 0:
+                            scores[i, previous_tokens] *= repetition_penalty
+                        else:
+                            scores[i, previous_tokens] /= repetition_penalty
 
             if do_sample:
                 # Temperature (higher temperature => more likely to sample low probability tokens)
@@ -958,9 +966,7 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=1.0, filter_value=-float("Inf")
         sorted_indices_to_remove[..., 0] = 0
 
         # scatter sorted tensors to original indexing
-        indices_to_remove = sorted_indices_to_remove.scatter(
-            dim=1, index=sorted_indices, source=sorted_indices_to_remove
-        )
+        indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
         logits[indices_to_remove] = filter_value
     return logits
 
