@@ -39,7 +39,7 @@ TOKENIZER_CONFIG_FILE = "tokenizer_config.json"
 
 class PreTrainedTokenizer(object):
     """ Base class for all tokenizers.
-    Handle all the shared methods for tokenization and special tokens as well as methods dowloading/caching/loading pretrained tokenizers as well as adding tokens to the vocabulary.
+    Handle all the shared methods for tokenization and special tokens as well as methods downloading/caching/loading pretrained tokenizers as well as adding tokens to the vocabulary.
 
     This class also contain the added tokens in a unified way on top of all tokenizers so we don't have to handle the specific vocabulary augmentation methods of the various underlying dictionary structures (BPE, sentencepiece...).
 
@@ -817,7 +817,7 @@ class PreTrainedTokenizer(object):
             truncation_strategy=truncation_strategy,
             pad_to_max_length=pad_to_max_length,
             return_tensors=return_tensors,
-            **kwargs
+            **kwargs,
         )
 
         return encoded_inputs["input_ids"]
