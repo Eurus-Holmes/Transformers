@@ -586,7 +586,7 @@ def main():
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
     parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
     parser.add_argument(
-        "--evaluate_during_training", action="store_true", help="Rul evaluation during training at each logging step."
+        "--evaluate_during_training", action="store_true", help="Run evaluation during training at each logging step."
     )
     parser.add_argument(
         "--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model."
@@ -670,6 +670,13 @@ def main():
 
     parser.add_argument("--threads", type=int, default=1, help="multiple threads for converting example to features")
     args = parser.parse_args()
+
+    if args.doc_stride >= args.max_seq_length - args.max_query_length:
+        logger.warning(
+            "WARNING - You've set a doc stride which may be superior to the document length in some "
+            "examples. This could result in errors when building features from the examples. Please reduce the doc "
+            "stride or increase the maximum length to ensure the features are correctly built."
+        )
 
     if (
         os.path.exists(args.output_dir)

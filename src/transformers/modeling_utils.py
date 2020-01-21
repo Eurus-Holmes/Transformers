@@ -47,13 +47,26 @@ except ImportError:
         """
 
         def __init__(self, *args, **kwargs):
-            super(Identity, self).__init__()
+            super().__init__()
 
         def forward(self, input):
             return input
 
 
-class PreTrainedModel(nn.Module):
+class ModuleUtilsMixin:
+    """
+    A few utilities for torch.nn.Modules, to be used as a mixin.
+    """
+
+    def num_parameters(self, only_trainable: bool = False) -> int:
+        """
+        Get number of (optionally, trainable) parameters in the module.
+        """
+        params = filter(lambda x: x.requires_grad, self.parameters()) if only_trainable else self.parameters()
+        return sum(p.numel() for p in params)
+
+
+class PreTrainedModel(nn.Module, ModuleUtilsMixin):
     r""" Base class for all models.
 
         :class:`~transformers.PreTrainedModel` takes care of storing the configuration of the models and handles methods for loading/downloading/saving models
@@ -84,7 +97,7 @@ class PreTrainedModel(nn.Module):
         return {"input_ids": torch.tensor(DUMMY_INPUTS)}
 
     def __init__(self, config, *inputs, **kwargs):
-        super(PreTrainedModel, self).__init__()
+        super().__init__()
         if not isinstance(config, PretrainedConfig):
             raise ValueError(
                 "Parameter config in `{}(config)` should be an instance of class `PretrainedConfig`. "
@@ -1089,7 +1102,7 @@ class Conv1D(nn.Module):
         """ Conv1D layer as defined by Radford et al. for OpenAI GPT (and also used in GPT-2)
             Basically works like a Linear layer but the weights are transposed
         """
-        super(Conv1D, self).__init__()
+        super().__init__()
         self.nf = nf
         w = torch.empty(nx, nf)
         nn.init.normal_(w, std=0.02)
@@ -1107,7 +1120,7 @@ class PoolerStartLogits(nn.Module):
     """ Compute SQuAD start_logits from sequence hidden states. """
 
     def __init__(self, config):
-        super(PoolerStartLogits, self).__init__()
+        super().__init__()
         self.dense = nn.Linear(config.hidden_size, 1)
 
     def forward(self, hidden_states, p_mask=None):
@@ -1132,7 +1145,7 @@ class PoolerEndLogits(nn.Module):
     """
 
     def __init__(self, config):
-        super(PoolerEndLogits, self).__init__()
+        super().__init__()
         self.dense_0 = nn.Linear(config.hidden_size * 2, config.hidden_size)
         self.activation = nn.Tanh()
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -1178,7 +1191,7 @@ class PoolerAnswerClass(nn.Module):
     """ Compute SQuAD 2.0 answer class from classification and start tokens hidden states. """
 
     def __init__(self, config):
-        super(PoolerAnswerClass, self).__init__()
+        super().__init__()
         self.dense_0 = nn.Linear(config.hidden_size * 2, config.hidden_size)
         self.activation = nn.Tanh()
         self.dense_1 = nn.Linear(config.hidden_size, 1, bias=False)
@@ -1263,7 +1276,7 @@ class SQuADHead(nn.Module):
     """
 
     def __init__(self, config):
-        super(SQuADHead, self).__init__()
+        super().__init__()
         self.start_n_top = config.start_n_top
         self.end_n_top = config.end_n_top
 
@@ -1355,7 +1368,7 @@ class SequenceSummary(nn.Module):
     """
 
     def __init__(self, config):
-        super(SequenceSummary, self).__init__()
+        super().__init__()
 
         self.summary_type = config.summary_type if hasattr(config, "summary_type") else "last"
         if self.summary_type == "attn":
