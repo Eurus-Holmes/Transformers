@@ -18,12 +18,14 @@
 
 import logging
 import os
+import typing
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 
+from .activations import get_activation
 from .configuration_utils import PretrainedConfig
 from .file_utils import (
     DUMMY_INPUTS,
@@ -284,6 +286,9 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         # Only save the model itself if we are using distributed training
         model_to_save = self.module if hasattr(self, "module") else self
 
+        # Attach architecture to the config
+        model_to_save.config.architectures = [model_to_save.__class__.__name__]
+
         # Save configuration file
         model_to_save.config.save_pretrained(save_directory)
 
@@ -418,11 +423,9 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                 )
                 archive_file = pretrained_model_name_or_path + ".index"
             else:
-                archive_file = hf_bucket_url(pretrained_model_name_or_path, postfix=WEIGHTS_NAME)
-                if from_tf:
-                    raise EnvironmentError(
-                        "Loading a PyTorch model from a TF checkpoint is not supported when using a model identifier name."
-                    )
+                archive_file = hf_bucket_url(
+                    pretrained_model_name_or_path, postfix=(TF2_WEIGHTS_NAME if from_tf else WEIGHTS_NAME)
+                )
 
             # redirect to the cache, if necessary
             try:
@@ -583,7 +586,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         self,
         input_ids=None,
         max_length=None,
-        do_sample=None,
+        do_sample=True,
         num_beams=None,
         temperature=None,
         top_k=None,
@@ -614,7 +617,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                 The max length of the sequence to be generated.  Between 1 and infinity. Default to 20.
 
             do_sample: (`optional`) bool
-                If set to `False` greedy decoding is used. Otherwise sampling is used. Default to greedy sampling.
+                If set to `False` greedy decoding is used. Otherwise sampling is used. Defaults to `True`.
 
             num_beams: (`optional`) int
                 Number of beams for beam search. Must be between 1 and infinity. 1 means no beam search. Default to 1.
@@ -1377,15 +1380,15 @@ class SequenceSummary(nn.Module):
                 - 'attn' => Not implemented now, use multi-head attention
             summary_use_proj: Add a projection after the vector extraction
             summary_proj_to_labels: If True, the projection outputs to config.num_labels classes (otherwise to hidden_size). Default: False.
-            summary_activation: 'tanh' => add a tanh activation to the output, Other => no activation. Default
+            summary_activation: 'tanh' or another string => add an activation to the output, Other => no activation. Default
             summary_first_dropout: Add a dropout before the projection and activation
             summary_last_dropout: Add a dropout after the projection and activation
     """
 
-    def __init__(self, config):
+    def __init__(self, config: PretrainedConfig):
         super().__init__()
 
-        self.summary_type = config.summary_type if hasattr(config, "summary_type") else "last"
+        self.summary_type = getattr(config, "summary_type", "last")
         if self.summary_type == "attn":
             # We should use a standard multi-head attention module with absolute positional embedding for that.
             # Cf. https://github.com/zihangdai/xlnet/blob/master/modeling.py#L253-L276
@@ -1400,9 +1403,10 @@ class SequenceSummary(nn.Module):
                 num_classes = config.hidden_size
             self.summary = nn.Linear(config.hidden_size, num_classes)
 
-        self.activation = Identity()
-        if hasattr(config, "summary_activation") and config.summary_activation == "tanh":
-            self.activation = nn.Tanh()
+        activation_string = getattr(config, "summary_activation", None)
+        self.activation = (
+            get_activation(activation_string) if activation_string else Identity()
+        )  # type: typing.Callable
 
         self.first_dropout = Identity()
         if hasattr(config, "summary_first_dropout") and config.summary_first_dropout > 0:

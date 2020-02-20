@@ -18,13 +18,13 @@
 
 
 import logging
-import math
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
 
+from .activations import gelu_new, swish
 from .configuration_xlnet import XLNetConfig
 from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
 from .modeling_utils import PoolerAnswerClass, PoolerEndLogits, PoolerStartLogits, PreTrainedModel, SequenceSummary
@@ -183,20 +183,7 @@ def load_tf_weights_in_xlnet(model, config, tf_path):
     return model
 
 
-def gelu(x):
-    """ Implementation of the gelu activation function.
-        XLNet is using OpenAI GPT's gelu (not exactly the same as BERT)
-        Also see https://arxiv.org/abs/1606.08415
-    """
-    cdf = 0.5 * (1.0 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
-    return x * cdf
-
-
-def swish(x):
-    return x * torch.sigmoid(x)
-
-
-ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
+ACT2FN = {"gelu": gelu_new, "relu": torch.nn.functional.relu, "swish": swish}
 
 
 XLNetLayerNorm = nn.LayerNorm
@@ -550,7 +537,7 @@ XLNET_INPUTS_DOCSTRING = r"""
         token_type_ids (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
             Segment token indices to indicate first and second portions of the inputs.
             Indices are selected in ``[0, 1]``: ``0`` corresponds to a `sentence A` token, ``1``
-            corresponds to a `sentence B` token
+            corresponds to a `sentence B` token. The classifier token should be represented by a ``2``.
 
             `What are token type IDs? <../glossary.html#token-type-ids>`_
         input_mask (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):

@@ -2,7 +2,7 @@
 # There's no way to ignore "F401 '...' imported but unused" warnings in this
 # module, but to preserve other warnings. So, don't check this module at all.
 
-__version__ = "2.3.0"
+__version__ = "2.5.0"
 
 # Work around to update TensorFlow's absl.logging threshold which alters the
 # default Python logging output behavior when present.
@@ -93,6 +93,7 @@ from .modeling_tf_pytorch_utils import (
 from .pipelines import (
     CsvPipelineDataFormat,
     FeatureExtractionPipeline,
+    FillMaskPipeline,
     JsonPipelineDataFormat,
     NerPipeline,
     PipedPipelineDataFormat,
@@ -100,6 +101,7 @@ from .pipelines import (
     PipelineDataFormat,
     QuestionAnsweringPipeline,
     TextClassificationPipeline,
+    TokenClassificationPipeline,
     pipeline,
 )
 from .tokenization_albert import AlbertTokenizer
@@ -108,13 +110,13 @@ from .tokenization_bert import BasicTokenizer, BertTokenizer, BertTokenizerFast,
 from .tokenization_bert_japanese import BertJapaneseTokenizer, CharacterTokenizer, MecabTokenizer
 from .tokenization_camembert import CamembertTokenizer
 from .tokenization_ctrl import CTRLTokenizer
-from .tokenization_distilbert import DistilBertTokenizer
+from .tokenization_distilbert import DistilBertTokenizer, DistilBertTokenizerFast
 from .tokenization_flaubert import FlaubertTokenizer
 from .tokenization_gpt2 import GPT2Tokenizer, GPT2TokenizerFast
-from .tokenization_openai import OpenAIGPTTokenizer
-from .tokenization_roberta import RobertaTokenizer
+from .tokenization_openai import OpenAIGPTTokenizer, OpenAIGPTTokenizerFast
+from .tokenization_roberta import RobertaTokenizer, RobertaTokenizerFast
 from .tokenization_t5 import T5Tokenizer
-from .tokenization_transfo_xl import TransfoXLCorpus, TransfoXLTokenizer
+from .tokenization_transfo_xl import TransfoXLCorpus, TransfoXLTokenizer, TransfoXLTokenizerFast
 
 # Tokenizers
 from .tokenization_utils import PreTrainedTokenizer
