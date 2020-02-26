@@ -76,6 +76,63 @@ class FastTokenizerMatchingTest(unittest.TestCase):
         for key in filter(lambda x: x in ["input_ids", "token_type_ids", "attention_mask"], input_p.keys()):
             self.assert_sequence_almost_equals(input_p[key], input_r[key], threshold)
 
+    def assert_padding(self, tokenizer_r, tokenizer_p):
+        # Simple input
+        input_r = tokenizer_r.encode("This is a simple input", max_length=15, pad_to_max_length=True)
+        input_p = tokenizer_p.encode("This is a simple input", max_length=15, pad_to_max_length=True)
+
+        self.assertSequenceEqual(input_r, input_p)
+
+        # Simple input
+        input_r = tokenizer_r.encode_plus("This is a simple input", max_length=15, pad_to_max_length=True)
+        input_p = tokenizer_p.encode_plus("This is a simple input", max_length=15, pad_to_max_length=True)
+
+        self.assertSequenceEqual(input_r, input_p)
+
+        # Simple input
+        # TODO: Re-enable this test when batch_encode_plus with padding correctly handles padding
+        # input_r = tokenizer_r.batch_encode_plus(
+        #     ["This is a simple input 1", "This is a simple input 2"], max_length=15, pad_to_max_length=True
+        # )
+        # input_p = tokenizer_p.batch_encode_plus(
+        #     ["This is a simple input 1", "This is a simple input 2"], max_length=15, pad_to_max_length=True
+        # )
+
+        # self.assertSequenceEqual(input_r, input_p)
+
+        # Pair input
+        input_r = tokenizer_r.encode("This is a simple input", "This is a pair", max_length=15, pad_to_max_length=True)
+        input_p = tokenizer_p.encode("This is a simple input", "This is a pair", max_length=15, pad_to_max_length=True)
+
+        self.assertSequenceEqual(input_r, input_p)
+
+        # Pair input
+        input_r = tokenizer_r.encode_plus(
+            "This is a simple input", "This is a pair", max_length=15, pad_to_max_length=True
+        )
+        input_p = tokenizer_p.encode_plus(
+            "This is a simple input", "This is a pair", max_length=15, pad_to_max_length=True
+        )
+
+        self.assertSequenceEqual(input_r, input_p)
+
+        # Pair input
+        # TODO: Re-enable this test when batch_encode_plus with padding correctly handles padding
+        # input_r = tokenizer_r.batch_encode_plus(
+        #     ["This is a simple input 1", "This is a simple input 2"],
+        #     ["This is a simple pair 1", "This is a simple pair 2"],
+        #     max_length=15,
+        #     pad_to_max_length=True,
+        # )
+        # input_p = tokenizer_p.batch_encode_plus(
+        #     ["This is a simple input 1", "This is a simple input 2"],
+        #     ["This is a simple pair 1", "This is a simple pair 2"],
+        #     max_length=15,
+        #     pad_to_max_length=True,
+        # )
+
+        # self.assertSequenceEqual(input_r, input_p)
+
     def assert_add_tokens(self, tokenizer_r):
         vocab_size = tokenizer_r.vocab_size
         self.assertEqual(tokenizer_r.add_tokens(""), 0)
@@ -201,6 +258,20 @@ class FastTokenizerMatchingTest(unittest.TestCase):
         output_p = tokenizer_p.build_inputs_with_special_tokens(input_simple, input_pair)
         self.assertEqual(output_p, output_r)
 
+    def assert_save_pretrained(self, tokenizer_r, tokenizer_p):
+
+        # Checks it save with the same files
+        self.assertSequenceEqual(tokenizer_r.save_vocabulary("."), tokenizer_p.save_vocabulary("."))
+
+        # Checks everything loads correctly in the same way
+        tokenizer_rp, tokenizer_pp = tokenizer_r.from_pretrained("."), tokenizer_p.from_pretrained(".")
+
+        # Check special tokens are set accordingly on Rust and Python
+        for key in tokenizer_pp.special_tokens_map:
+            self.assertTrue(hasattr(tokenizer_rp, key))
+            # self.assertEqual(getattr(tokenizer_rp, key), getattr(tokenizer_pp, key))
+            # self.assertEqual(getattr(tokenizer_rp, key + "_id"), getattr(tokenizer_pp, key + "_id"))
+
     def test_bert(self):
         for tokenizer_name in BertTokenizer.pretrained_vocab_files_map["vocab_file"].keys():
             tokenizer_p = BertTokenizer.from_pretrained(tokenizer_name)
@@ -237,7 +308,10 @@ class FastTokenizerMatchingTest(unittest.TestCase):
             self.assert_build_inputs_with_special_tokens(tokenizer_r, tokenizer_p)
 
             # Check the number of returned files for save_vocabulary
-            self.assertEqual(len(tokenizer_r.save_vocabulary(".")), len(tokenizer_p.save_vocabulary(".")))
+            self.assert_save_pretrained(tokenizer_r, tokenizer_p)
+
+            # Check for padding
+            self.assert_padding(tokenizer_r, tokenizer_p)
 
     @require_torch
     def test_transfoxl(self):
@@ -275,8 +349,25 @@ class FastTokenizerMatchingTest(unittest.TestCase):
             # Check alignment for build_inputs_with_special_tokens
             self.assert_build_inputs_with_special_tokens(tokenizer_r, tokenizer_p)
 
+            # Check for padding
+            self.assertRaises(ValueError, self.assert_padding, tokenizer_r, tokenizer_p)
+
             # Check the number of returned files for save_vocabulary
-            self.assertEqual(len(tokenizer_r.save_vocabulary(".")), len(tokenizer_p.save_vocabulary(".")))
+            # TransfoXL tokenizers comes in a special format which is not compatible at all
+            # with rust tokenizers. We ensure the errors detection at correctly raised
+            tokenizer_r_files = tokenizer_r.save_pretrained(".")
+            self.assertSequenceEqual(
+                tokenizer_r_files, ["./vocab.json", "./special_tokens_map.json", "./added_tokens.json"]
+            )
+
+            # Check loading Python-tokenizer save through Rust doesnt work (and the opposite)
+            self.assertRaises(ValueError, tokenizer_p.from_pretrained, *tokenizer_r_files)
+            self.assertRaises(ValueError, tokenizer_r.from_pretrained, *tokenizer_p.save_pretrained("."))
+
+            # Check loading works for Python to Python and Rust to Rust
+            # Issue: https://github.com/huggingface/transformers/issues/3000
+            # self.assertIsNotNone(tokenizer_p.__class__.from_pretrained('./'))
+            self.assertIsNotNone(tokenizer_r.__class__.from_pretrained("./"))
 
     def test_distilbert(self):
         for tokenizer_name in DistilBertTokenizer.pretrained_vocab_files_map["vocab_file"].keys():
@@ -315,7 +406,10 @@ class FastTokenizerMatchingTest(unittest.TestCase):
             self.assert_build_inputs_with_special_tokens(tokenizer_r, tokenizer_p)
 
             # Check the number of returned files for save_vocabulary
-            self.assertEqual(len(tokenizer_r.save_vocabulary(".")), len(tokenizer_p.save_vocabulary(".")))
+            self.assert_save_pretrained(tokenizer_r, tokenizer_p)
+
+            # Check for padding
+            self.assert_padding(tokenizer_r, tokenizer_p)
 
     def test_gpt2(self):
         for tokenizer_name in GPT2Tokenizer.pretrained_vocab_files_map["vocab_file"].keys():
@@ -353,7 +447,10 @@ class FastTokenizerMatchingTest(unittest.TestCase):
             self.assert_build_inputs_with_special_tokens(tokenizer_r, tokenizer_p)
 
             # Check the number of returned files for save_vocabulary
-            self.assertEqual(len(tokenizer_r.save_vocabulary(".")), len(tokenizer_p.save_vocabulary(".")))
+            self.assert_save_pretrained(tokenizer_r, tokenizer_p)
+
+            # Check for padding
+            self.assertRaises(ValueError, self.assert_padding, tokenizer_r, tokenizer_p)
 
     def test_roberta(self):
         for tokenizer_name in RobertaTokenizer.pretrained_vocab_files_map["vocab_file"].keys():
@@ -391,7 +488,11 @@ class FastTokenizerMatchingTest(unittest.TestCase):
             self.assert_build_inputs_with_special_tokens(tokenizer_r, tokenizer_p)
 
             # Check the number of returned files for save_vocabulary
-            self.assertEqual(len(tokenizer_r.save_vocabulary(".")), len(tokenizer_p.save_vocabulary(".")))
+            self.assert_save_pretrained(tokenizer_r, tokenizer_p)
+
+            # Check for padding
+            # TODO: Re-enable this test as soon as Roberta align with the python tokenizer.
+            # self.assert_padding(tokenizer_r, tokenizer_p)
 
     def test_openai(self):
         for tokenizer_name in OpenAIGPTTokenizer.pretrained_vocab_files_map["vocab_file"].keys():
@@ -428,9 +529,10 @@ class FastTokenizerMatchingTest(unittest.TestCase):
             # Check alignment for build_inputs_with_special_tokens
             self.assert_build_inputs_with_special_tokens(tokenizer_r, tokenizer_p)
 
-            # Check the number of returned files for save_vocabulary
             self.assertEqual(len(tokenizer_r.save_vocabulary(".")), len(tokenizer_p.save_vocabulary(".")))
 
+            # Check for padding
+            self.assertRaises(ValueError, self.assert_padding, tokenizer_r, tokenizer_p)
 
-if __name__ == "__main__":
-    unittest.main()
+            # Check the number of returned files for save_vocabulary
+            self.assert_save_pretrained(tokenizer_r, tokenizer_p)

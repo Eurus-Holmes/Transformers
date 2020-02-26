@@ -2,7 +2,7 @@
 # There's no way to ignore "F401 '...' imported but unused" warnings in this
 # module, but to preserve other warnings. So, don't check this module at all.
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"
 
 # Work around to update TensorFlow's absl.logging threshold which alters the
 # default Python logging output behavior when present.
@@ -21,6 +21,7 @@ import logging
 
 from .configuration_albert import ALBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, AlbertConfig
 from .configuration_auto import ALL_PRETRAINED_CONFIG_ARCHIVE_MAP, AutoConfig
+from .configuration_bart import BartConfig
 from .configuration_bert import BERT_PRETRAINED_CONFIG_ARCHIVE_MAP, BertConfig
 from .configuration_camembert import CAMEMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, CamembertConfig
 from .configuration_ctrl import CTRL_PRETRAINED_CONFIG_ARCHIVE_MAP, CTRLConfig
@@ -106,6 +107,7 @@ from .pipelines import (
 )
 from .tokenization_albert import AlbertTokenizer
 from .tokenization_auto import AutoTokenizer
+from .tokenization_bart import BartTokenizer
 from .tokenization_bert import BasicTokenizer, BertTokenizer, BertTokenizerFast, WordpieceTokenizer
 from .tokenization_bert_japanese import BertJapaneseTokenizer, CharacterTokenizer, MecabTokenizer
 from .tokenization_camembert import CamembertTokenizer
@@ -204,6 +206,7 @@ if is_torch_available():
         XLMForQuestionAnsweringSimple,
         XLM_PRETRAINED_MODEL_ARCHIVE_MAP,
     )
+    from .modeling_bart import BartForSequenceClassification, BartModel, BartForMaskedLM
     from .modeling_roberta import (
         RobertaForMaskedLM,
         RobertaModel,
@@ -218,6 +221,7 @@ if is_torch_available():
         CamembertModel,
         CamembertForSequenceClassification,
         CamembertForTokenClassification,
+        CamembertForQuestionAnswering,
         CAMEMBERT_PRETRAINED_MODEL_ARCHIVE_MAP,
     )
     from .modeling_distilbert import (

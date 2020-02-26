@@ -75,9 +75,9 @@ class PretrainedConfig(object):
         self.top_k = kwargs.pop("top_k", 50)
         self.top_p = kwargs.pop("top_p", 1.0)
         self.repetition_penalty = kwargs.pop("repetition_penalty", 1.0)
-        self.bos_token_id = kwargs.pop("bos_token_id", 0)
-        self.pad_token_id = kwargs.pop("pad_token_id", 0)
-        self.eos_token_ids = kwargs.pop("eos_token_ids", 0)
+        self.bos_token_id = kwargs.pop("bos_token_id", None)
+        self.pad_token_id = kwargs.pop("pad_token_id", None)
+        self.eos_token_ids = kwargs.pop("eos_token_ids", None)
         self.length_penalty = kwargs.pop("length_penalty", 1.0)
         self.num_return_sequences = kwargs.pop("num_return_sequences", 1)
 
@@ -198,6 +198,7 @@ class PretrainedConfig(object):
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", False)
 
         if pretrained_config_archive_map is None:
             pretrained_config_archive_map = cls.pretrained_config_archive_map
@@ -219,6 +220,7 @@ class PretrainedConfig(object):
                 force_download=force_download,
                 proxies=proxies,
                 resume_download=resume_download,
+                local_files_only=local_files_only,
             )
             # Load config dict
             if resolved_config_file is None:
