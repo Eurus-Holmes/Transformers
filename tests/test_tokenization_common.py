@@ -48,7 +48,7 @@ class TokenizerTesterMixin:
         # to the concatenated encode_plus format: [{'input_ids': [...], ...}, {'input_ids': [...], ...}]
         return [
             {value: batch_encode_plus_sequences[value][i] for value in batch_encode_plus_sequences.keys()}
-            for i in range(len(batch_encode_plus_sequences))
+            for i in range(len(batch_encode_plus_sequences["input_ids"]))
         ]
 
     def test_tokenizers_common_properties(self):
@@ -261,7 +261,10 @@ class TokenizerTesterMixin:
     def test_mask_output(self):
         tokenizer = self.get_tokenizer()
 
-        if tokenizer.build_inputs_with_special_tokens.__qualname__.split(".")[0] != "PreTrainedTokenizer":
+        if (
+            tokenizer.build_inputs_with_special_tokens.__qualname__.split(".")[0] != "PreTrainedTokenizer"
+            and "token_type_ids" in tokenizer.model_input_names
+        ):
             seq_0 = "Test this method."
             seq_1 = "With these inputs."
             information = tokenizer.encode_plus(seq_0, seq_1, add_special_tokens=True)
@@ -449,6 +452,10 @@ class TokenizerTesterMixin:
 
         sequence = "Sequence"
         padding_size = 10
+
+        # check correct behaviour if no pad_token_id exists and add it eventually
+        self._check_no_pad_token_padding(tokenizer, sequence)
+
         padding_idx = tokenizer.pad_token_id
 
         # RIGHT PADDING - Check that it correctly pads when a maximum length is specified along with the padding flag set to True
@@ -490,56 +497,68 @@ class TokenizerTesterMixin:
         tokenizer = self.get_tokenizer()
 
         sequence = "Sequence"
+
+        # check correct behaviour if no pad_token_id exists and add it eventually
+        self._check_no_pad_token_padding(tokenizer, sequence)
+
         padding_size = 10
         padding_idx = tokenizer.pad_token_id
         token_type_padding_idx = tokenizer.pad_token_type_id
 
         encoded_sequence = tokenizer.encode_plus(sequence, return_special_tokens_mask=True)
         input_ids = encoded_sequence["input_ids"]
-        token_type_ids = encoded_sequence["token_type_ids"]
-        attention_mask = encoded_sequence["attention_mask"]
         special_tokens_mask = encoded_sequence["special_tokens_mask"]
         sequence_length = len(input_ids)
 
         # Test right padding
         tokenizer.padding_side = "right"
-        padded_sequence = tokenizer.encode_plus(
+
+        right_padded_sequence = tokenizer.encode_plus(
             sequence,
             max_length=sequence_length + padding_size,
             pad_to_max_length=True,
             return_special_tokens_mask=True,
         )
-        padded_input_ids = padded_sequence["input_ids"]
-        padded_token_type_ids = padded_sequence["token_type_ids"]
-        padded_attention_mask = padded_sequence["attention_mask"]
-        padded_special_tokens_mask = padded_sequence["special_tokens_mask"]
-        padded_sequence_length = len(padded_input_ids)
+        right_padded_input_ids = right_padded_sequence["input_ids"]
 
-        assert sequence_length + padding_size == padded_sequence_length
-        assert input_ids + [padding_idx] * padding_size == padded_input_ids
-        assert token_type_ids + [token_type_padding_idx] * padding_size == padded_token_type_ids
-        assert attention_mask + [0] * padding_size == padded_attention_mask
-        assert special_tokens_mask + [1] * padding_size == padded_special_tokens_mask
+        right_padded_special_tokens_mask = right_padded_sequence["special_tokens_mask"]
+        right_padded_sequence_length = len(right_padded_input_ids)
+
+        assert sequence_length + padding_size == right_padded_sequence_length
+        assert input_ids + [padding_idx] * padding_size == right_padded_input_ids
+        assert special_tokens_mask + [1] * padding_size == right_padded_special_tokens_mask
 
         # Test left padding
         tokenizer.padding_side = "left"
-        padded_sequence = tokenizer.encode_plus(
+        left_padded_sequence = tokenizer.encode_plus(
             sequence,
             max_length=sequence_length + padding_size,
             pad_to_max_length=True,
             return_special_tokens_mask=True,
         )
-        padded_input_ids = padded_sequence["input_ids"]
-        padded_token_type_ids = padded_sequence["token_type_ids"]
-        padded_attention_mask = padded_sequence["attention_mask"]
-        padded_special_tokens_mask = padded_sequence["special_tokens_mask"]
-        padded_sequence_length = len(padded_input_ids)
+        left_padded_input_ids = left_padded_sequence["input_ids"]
+        left_padded_special_tokens_mask = left_padded_sequence["special_tokens_mask"]
+        left_padded_sequence_length = len(left_padded_input_ids)
 
-        assert sequence_length + padding_size == padded_sequence_length
-        assert [padding_idx] * padding_size + input_ids == padded_input_ids
-        assert [token_type_padding_idx] * padding_size + token_type_ids == padded_token_type_ids
-        assert [0] * padding_size + attention_mask == padded_attention_mask
-        assert [1] * padding_size + special_tokens_mask == padded_special_tokens_mask
+        assert sequence_length + padding_size == left_padded_sequence_length
+        assert [padding_idx] * padding_size + input_ids == left_padded_input_ids
+        assert [1] * padding_size + special_tokens_mask == left_padded_special_tokens_mask
+
+        if "token_type_ids" in tokenizer.model_input_names:
+            token_type_ids = encoded_sequence["token_type_ids"]
+            left_padded_token_type_ids = left_padded_sequence["token_type_ids"]
+            right_padded_token_type_ids = right_padded_sequence["token_type_ids"]
+
+            assert token_type_ids + [token_type_padding_idx] * padding_size == right_padded_token_type_ids
+            assert [token_type_padding_idx] * padding_size + token_type_ids == left_padded_token_type_ids
+
+        if "attention_mask" in tokenizer.model_input_names:
+            attention_mask = encoded_sequence["attention_mask"]
+            right_padded_attention_mask = right_padded_sequence["attention_mask"]
+            left_padded_attention_mask = left_padded_sequence["attention_mask"]
+
+            assert attention_mask + [0] * padding_size == right_padded_attention_mask
+            assert [0] * padding_size + attention_mask == left_padded_attention_mask
 
     def test_separate_tokenizers(self):
         # This tests that tokenizers don't impact others. Unfortunately the case where it fails is when
@@ -588,10 +607,14 @@ class TokenizerTesterMixin:
 
         maximum_length = len(max([encoded_sequence["input_ids"] for encoded_sequence in encoded_sequences], key=len))
 
+        # check correct behaviour if no pad_token_id exists and add it eventually
+        self._check_no_pad_token_padding(tokenizer, sequences)
+
         encoded_sequences_padded = [
             tokenizer.encode_plus(sequence, pad_to_max_length=True, max_length=maximum_length)
             for sequence in sequences
         ]
+
         encoded_sequences_batch_padded = tokenizer.batch_encode_plus(sequences, pad_to_max_length=True)
         self.assertListEqual(
             encoded_sequences_padded,
@@ -610,6 +633,10 @@ class TokenizerTesterMixin:
         ]
 
         max_length = 100
+
+        # check correct behaviour if no pad_token_id exists and add it eventually
+        self._check_no_pad_token_padding(tokenizer, sequences)
+
         encoded_sequences = [
             tokenizer.encode_plus(sequence, pad_to_max_length=True, max_length=max_length) for sequence in sequences
         ]
@@ -620,6 +647,7 @@ class TokenizerTesterMixin:
 
         # Left padding tests
         tokenizer = self.get_tokenizer()
+
         tokenizer.padding_side = "left"
         sequences = [
             "Testing batch encode plus",
@@ -628,6 +656,10 @@ class TokenizerTesterMixin:
         ]
 
         max_length = 100
+
+        # check correct behaviour if no pad_token_id exists and add it eventually
+        self._check_no_pad_token_padding(tokenizer, sequences)
+
         encoded_sequences = [
             tokenizer.encode_plus(sequence, pad_to_max_length=True, max_length=max_length) for sequence in sequences
         ]
@@ -668,3 +700,15 @@ class TokenizerTesterMixin:
                 encoded_value = encoded_sequences[key]
 
                 self.assertEqual(pytorch_value, tensorflow_value, encoded_value)
+
+    def _check_no_pad_token_padding(self, tokenizer, sequences):
+        # if tokenizer does not have pad_token_id, an error should be thrown
+        if tokenizer.pad_token_id is None:
+            with self.assertRaises(ValueError):
+                if isinstance(sequences, list):
+                    tokenizer.batch_encode_plus(sequences, pad_to_max_length=True)
+                else:
+                    tokenizer.encode_plus(sequences, pad_to_max_length=True)
+
+            # add pad_token_id to pass subsequent tests
+            tokenizer.add_special_tokens({"pad_token": "<PAD>"})
