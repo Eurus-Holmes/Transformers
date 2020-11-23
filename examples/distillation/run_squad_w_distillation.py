@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" This is the exact same script as `examples/run_squad.py` (as of 2020, January 8th) with an additional and optional step of distillation."""
+""" This is the exact same script as `examples/question-answering/run_squad.py` (as of 2020, January 8th) with an additional and optional step of distillation."""
 
 import argparse
 import glob
@@ -30,6 +30,7 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
+import transformers
 from transformers import (
     WEIGHTS_NAME,
     AdamW,
@@ -57,6 +58,7 @@ from transformers.data.metrics.squad_metrics import (
     squad_evaluate,
 )
 from transformers.data.processors.squad import SquadResult, SquadV1Processor, SquadV2Processor
+from transformers.trainer_utils import is_main_process
 
 
 try:
@@ -67,9 +69,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-ALL_MODELS = sum(
-    (tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, XLNetConfig, XLMConfig)), ()
-)
 
 MODEL_CLASSES = {
     "bert": (BertConfig, BertForQuestionAnswering, BertTokenizer),
@@ -231,14 +230,20 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                 assert end_logits_tea.size() == end_logits_stu.size()
 
                 loss_fct = nn.KLDivLoss(reduction="batchmean")
-                loss_start = loss_fct(
-                    F.log_softmax(start_logits_stu / args.temperature, dim=-1),
-                    F.softmax(start_logits_tea / args.temperature, dim=-1),
-                ) * (args.temperature ** 2)
-                loss_end = loss_fct(
-                    F.log_softmax(end_logits_stu / args.temperature, dim=-1),
-                    F.softmax(end_logits_tea / args.temperature, dim=-1),
-                ) * (args.temperature ** 2)
+                loss_start = (
+                    loss_fct(
+                        F.log_softmax(start_logits_stu / args.temperature, dim=-1),
+                        F.softmax(start_logits_tea / args.temperature, dim=-1),
+                    )
+                    * (args.temperature ** 2)
+                )
+                loss_end = (
+                    loss_fct(
+                        F.log_softmax(end_logits_stu / args.temperature, dim=-1),
+                        F.softmax(end_logits_tea / args.temperature, dim=-1),
+                    )
+                    * (args.temperature ** 2)
+                )
                 loss_ce = (loss_start + loss_end) / 2.0
 
                 loss = args.alpha_ce * loss_ce + args.alpha_squad * loss
@@ -505,7 +510,7 @@ def main():
         default=None,
         type=str,
         required=True,
-        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS),
+        help="Path to pretrained model or model identifier from huggingface.co/models",
     )
     parser.add_argument(
         "--output_dir",
@@ -573,7 +578,7 @@ def main():
         "--cache_dir",
         default="",
         type=str,
-        help="Where do you want to store the pre-trained models downloaded from s3",
+        help="Where do you want to store the pre-trained models downloaded from huggingface.co",
     )
 
     parser.add_argument(
@@ -742,7 +747,11 @@ def main():
         bool(args.local_rank != -1),
         args.fp16,
     )
-
+    # Set the verbosity to info of the Transformers logger (on main process only):
+    if is_main_process(args.local_rank):
+        transformers.utils.logging.set_verbosity_info()
+        transformers.utils.logging.enable_default_handler()
+        transformers.utils.logging.enable_explicit_format()
     # Set seed
     set_seed(args)
 
@@ -812,10 +821,6 @@ def main():
 
     # Save the trained model and the tokenizer
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        # Create output directory if needed
-        if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
-            os.makedirs(args.output_dir)
-
         logger.info("Saving model checkpoint to %s", args.output_dir)
         # Save a trained model, configuration and tokenizer using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
@@ -843,7 +848,6 @@ def main():
             checkpoints = list(
                 os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True))
             )
-            logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce model loading logs
 
         logger.info("Evaluate the following checkpoints: %s", checkpoints)
 

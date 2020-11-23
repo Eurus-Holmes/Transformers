@@ -15,30 +15,37 @@
 # limitations under the License.
 """ GLUE processors and helpers """
 
-import logging
 import os
+import warnings
+from dataclasses import asdict
+from enum import Enum
+from typing import List, Optional, Union
 
 from ...file_utils import is_tf_available
+from ...tokenization_utils import PreTrainedTokenizer
+from ...utils import logging
 from .utils import DataProcessor, InputExample, InputFeatures
 
 
 if is_tf_available():
     import tensorflow as tf
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
+
+DEPRECATION_WARNING = (
+    "This {0} will be removed from the library soon, preprocessing should be handled with the 🤗 Datasets "
+    "library. You can have a look at this example script for pointers: "
+    "https://github.com/huggingface/transformers/blob/master/examples/text-classification/run_glue.py"
+)
 
 
 def glue_convert_examples_to_features(
-    examples,
-    tokenizer,
-    max_length=512,
+    examples: Union[List[InputExample], "tf.data.Dataset"],
+    tokenizer: PreTrainedTokenizer,
+    max_length: Optional[int] = None,
     task=None,
     label_list=None,
     output_mode=None,
-    pad_on_left=False,
-    pad_token=0,
-    pad_token_segment_id=0,
-    mask_padding_with_zero=True,
 ):
     """
     Loads a data file into a list of ``InputFeatures``
@@ -46,26 +53,70 @@ def glue_convert_examples_to_features(
     Args:
         examples: List of ``InputExamples`` or ``tf.data.Dataset`` containing the examples.
         tokenizer: Instance of a tokenizer that will tokenize the examples
-        max_length: Maximum example length
+        max_length: Maximum example length. Defaults to the tokenizer's max_len
         task: GLUE task
         label_list: List of labels. Can be obtained from the processor using the ``processor.get_labels()`` method
         output_mode: String indicating the output mode. Either ``regression`` or ``classification``
-        pad_on_left: If set to ``True``, the examples will be padded on the left rather than on the right (default)
-        pad_token: Padding token
-        pad_token_segment_id: The segment ID for the padding token (It is usually 0, but can vary such as for XLNet where it is 4)
-        mask_padding_with_zero: If set to ``True``, the attention mask will be filled by ``1`` for actual values
-            and by ``0`` for padded values. If set to ``False``, inverts it (``1`` for padded values, ``0`` for
-            actual values)
 
     Returns:
-        If the ``examples`` input is a ``tf.data.Dataset``, will return a ``tf.data.Dataset``
-        containing the task-specific features. If the input is a list of ``InputExamples``, will return
-        a list of task-specific ``InputFeatures`` which can be fed to the model.
+        If the ``examples`` input is a ``tf.data.Dataset``, will return a ``tf.data.Dataset`` containing the
+        task-specific features. If the input is a list of ``InputExamples``, will return a list of task-specific
+        ``InputFeatures`` which can be fed to the model.
 
     """
-    is_tf_dataset = False
+    warnings.warn(DEPRECATION_WARNING.format("function"), FutureWarning)
     if is_tf_available() and isinstance(examples, tf.data.Dataset):
-        is_tf_dataset = True
+        if task is None:
+            raise ValueError("When calling glue_convert_examples_to_features from TF, the task parameter is required.")
+        return _tf_glue_convert_examples_to_features(examples, tokenizer, max_length=max_length, task=task)
+    return _glue_convert_examples_to_features(
+        examples, tokenizer, max_length=max_length, task=task, label_list=label_list, output_mode=output_mode
+    )
+
+
+if is_tf_available():
+
+    def _tf_glue_convert_examples_to_features(
+        examples: tf.data.Dataset,
+        tokenizer: PreTrainedTokenizer,
+        task=str,
+        max_length: Optional[int] = None,
+    ) -> tf.data.Dataset:
+        """
+        Returns:
+            A ``tf.data.Dataset`` containing the task-specific features.
+
+        """
+        processor = glue_processors[task]()
+        examples = [processor.tfds_map(processor.get_example_from_tensor_dict(example)) for example in examples]
+        features = glue_convert_examples_to_features(examples, tokenizer, max_length=max_length, task=task)
+        label_type = tf.float32 if task == "sts-b" else tf.int64
+
+        def gen():
+            for ex in features:
+                d = {k: v for k, v in asdict(ex).items() if v is not None}
+                label = d.pop("label")
+                yield (d, label)
+
+        input_names = ["input_ids"] + tokenizer.model_input_names
+
+        return tf.data.Dataset.from_generator(
+            gen,
+            ({k: tf.int32 for k in input_names}, label_type),
+            ({k: tf.TensorShape([None]) for k in input_names}, tf.TensorShape([])),
+        )
+
+
+def _glue_convert_examples_to_features(
+    examples: List[InputExample],
+    tokenizer: PreTrainedTokenizer,
+    max_length: Optional[int] = None,
+    task=None,
+    label_list=None,
+    output_mode=None,
+):
+    if max_length is None:
+        max_length = tokenizer.max_len
 
     if task is not None:
         processor = glue_processors[task]()
@@ -78,98 +129,50 @@ def glue_convert_examples_to_features(
 
     label_map = {label: i for i, label in enumerate(label_list)}
 
-    features = []
-    for (ex_index, example) in enumerate(examples):
-        len_examples = 0
-        if is_tf_dataset:
-            example = processor.get_example_from_tensor_dict(example)
-            example = processor.tfds_map(example)
-            len_examples = tf.data.experimental.cardinality(examples)
-        else:
-            len_examples = len(examples)
-        if ex_index % 10000 == 0:
-            logger.info("Writing example %d/%d" % (ex_index, len_examples))
-
-        inputs = tokenizer.encode_plus(
-            example.text_a, example.text_b, add_special_tokens=True, max_length=max_length, return_token_type_ids=True,
-        )
-        input_ids, token_type_ids = inputs["input_ids"], inputs["token_type_ids"]
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        attention_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
-
-        # Zero-pad up to the sequence length.
-        padding_length = max_length - len(input_ids)
-        if pad_on_left:
-            input_ids = ([pad_token] * padding_length) + input_ids
-            attention_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + attention_mask
-            token_type_ids = ([pad_token_segment_id] * padding_length) + token_type_ids
-        else:
-            input_ids = input_ids + ([pad_token] * padding_length)
-            attention_mask = attention_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
-            token_type_ids = token_type_ids + ([pad_token_segment_id] * padding_length)
-
-        assert len(input_ids) == max_length, "Error with input length {} vs {}".format(len(input_ids), max_length)
-        assert len(attention_mask) == max_length, "Error with input length {} vs {}".format(
-            len(attention_mask), max_length
-        )
-        assert len(token_type_ids) == max_length, "Error with input length {} vs {}".format(
-            len(token_type_ids), max_length
-        )
-
+    def label_from_example(example: InputExample) -> Union[int, float, None]:
+        if example.label is None:
+            return None
         if output_mode == "classification":
-            label = label_map[example.label]
+            return label_map[example.label]
         elif output_mode == "regression":
-            label = float(example.label)
-        else:
-            raise KeyError(output_mode)
+            return float(example.label)
+        raise KeyError(output_mode)
 
-        if ex_index < 5:
-            logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("attention_mask: %s" % " ".join([str(x) for x in attention_mask]))
-            logger.info("token_type_ids: %s" % " ".join([str(x) for x in token_type_ids]))
-            logger.info("label: %s (id = %d)" % (example.label, label))
+    labels = [label_from_example(example) for example in examples]
 
-        features.append(
-            InputFeatures(
-                input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, label=label
-            )
-        )
+    batch_encoding = tokenizer(
+        [(example.text_a, example.text_b) for example in examples],
+        max_length=max_length,
+        padding="max_length",
+        truncation=True,
+    )
 
-    if is_tf_available() and is_tf_dataset:
+    features = []
+    for i in range(len(examples)):
+        inputs = {k: batch_encoding[k][i] for k in batch_encoding}
 
-        def gen():
-            for ex in features:
-                yield (
-                    {
-                        "input_ids": ex.input_ids,
-                        "attention_mask": ex.attention_mask,
-                        "token_type_ids": ex.token_type_ids,
-                    },
-                    ex.label,
-                )
+        feature = InputFeatures(**inputs, label=labels[i])
+        features.append(feature)
 
-        return tf.data.Dataset.from_generator(
-            gen,
-            ({"input_ids": tf.int32, "attention_mask": tf.int32, "token_type_ids": tf.int32}, tf.int64),
-            (
-                {
-                    "input_ids": tf.TensorShape([None]),
-                    "attention_mask": tf.TensorShape([None]),
-                    "token_type_ids": tf.TensorShape([None]),
-                },
-                tf.TensorShape([]),
-            ),
-        )
+    for i, example in enumerate(examples[:5]):
+        logger.info("*** Example ***")
+        logger.info("guid: %s" % (example.guid))
+        logger.info("features: %s" % features[i])
 
     return features
 
 
+class OutputMode(Enum):
+    classification = "classification"
+    regression = "regression"
+
+
 class MrpcProcessor(DataProcessor):
     """Processor for the MRPC data set (GLUE version)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
 
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
@@ -189,12 +192,16 @@ class MrpcProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
@@ -202,13 +209,17 @@ class MrpcProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, i)
             text_a = line[3]
             text_b = line[4]
-            label = line[0]
+            label = None if set_type == "test" else line[0]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
 
 class MnliProcessor(DataProcessor):
     """Processor for the MultiNLI data set (GLUE version)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
 
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
@@ -227,12 +238,16 @@ class MnliProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_matched.tsv")), "dev_matched")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test_matched.tsv")), "test_matched")
+
     def get_labels(self):
         """See base class."""
         return ["contradiction", "entailment", "neutral"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
@@ -240,7 +255,7 @@ class MnliProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, line[0])
             text_a = line[8]
             text_b = line[9]
-            label = line[-1]
+            label = None if set_type.startswith("test") else line[-1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
@@ -248,13 +263,25 @@ class MnliProcessor(DataProcessor):
 class MnliMismatchedProcessor(MnliProcessor):
     """Processor for the MultiNLI Mismatched data set (GLUE version)."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
+
     def get_dev_examples(self, data_dir):
         """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_mismatched.tsv")), "dev_matched")
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_mismatched.tsv")), "dev_mismatched")
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test_mismatched.tsv")), "test_mismatched")
 
 
 class ColaProcessor(DataProcessor):
     """Processor for the CoLA data set (GLUE version)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
 
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
@@ -273,17 +300,25 @@ class ColaProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
+        test_mode = set_type == "test"
+        if test_mode:
+            lines = lines[1:]
+        text_index = 1 if test_mode else 3
         examples = []
         for (i, line) in enumerate(lines):
             guid = "%s-%s" % (set_type, i)
-            text_a = line[3]
-            label = line[1]
+            text_a = line[text_index]
+            label = None if test_mode else line[1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
         return examples
 
@@ -291,6 +326,10 @@ class ColaProcessor(DataProcessor):
 class Sst2Processor(DataProcessor):
     """Processor for the SST-2 data set (GLUE version)."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
+
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
         return InputExample(
@@ -308,25 +347,34 @@ class Sst2Processor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
+        text_index = 1 if set_type == "test" else 0
         for (i, line) in enumerate(lines):
             if i == 0:
                 continue
             guid = "%s-%s" % (set_type, i)
-            text_a = line[0]
-            label = line[1]
+            text_a = line[text_index]
+            label = None if set_type == "test" else line[1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
         return examples
 
 
 class StsbProcessor(DataProcessor):
     """Processor for the STS-B data set (GLUE version)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
 
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
@@ -345,12 +393,16 @@ class StsbProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return [None]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
@@ -358,13 +410,17 @@ class StsbProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, line[0])
             text_a = line[7]
             text_b = line[8]
-            label = line[-1]
+            label = None if set_type == "test" else line[-1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
 
 class QqpProcessor(DataProcessor):
     """Processor for the QQP data set (GLUE version)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
 
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
@@ -383,21 +439,28 @@ class QqpProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
+        test_mode = set_type == "test"
+        q1_index = 1 if test_mode else 3
+        q2_index = 2 if test_mode else 4
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
                 continue
             guid = "%s-%s" % (set_type, line[0])
             try:
-                text_a = line[3]
-                text_b = line[4]
-                label = line[5]
+                text_a = line[q1_index]
+                text_b = line[q2_index]
+                label = None if test_mode else line[5]
             except IndexError:
                 continue
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
@@ -406,6 +469,10 @@ class QqpProcessor(DataProcessor):
 
 class QnliProcessor(DataProcessor):
     """Processor for the QNLI data set (GLUE version)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
 
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
@@ -422,14 +489,18 @@ class QnliProcessor(DataProcessor):
 
     def get_dev_examples(self, data_dir):
         """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev_matched")
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
 
     def get_labels(self):
         """See base class."""
         return ["entailment", "not_entailment"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
@@ -437,7 +508,7 @@ class QnliProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, line[0])
             text_a = line[1]
             text_b = line[2]
-            label = line[-1]
+            label = None if set_type == "test" else line[-1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
@@ -445,6 +516,10 @@ class QnliProcessor(DataProcessor):
 class RteProcessor(DataProcessor):
     """Processor for the RTE data set (GLUE version)."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
+
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
         return InputExample(
@@ -462,12 +537,16 @@ class RteProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return ["entailment", "not_entailment"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
@@ -475,7 +554,7 @@ class RteProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, line[0])
             text_a = line[1]
             text_b = line[2]
-            label = line[-1]
+            label = None if set_type == "test" else line[-1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
@@ -483,6 +562,10 @@ class RteProcessor(DataProcessor):
 class WnliProcessor(DataProcessor):
     """Processor for the WNLI data set (GLUE version)."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(DEPRECATION_WARNING.format("processor"), FutureWarning)
+
     def get_example_from_tensor_dict(self, tensor_dict):
         """See base class."""
         return InputExample(
@@ -500,12 +583,16 @@ class WnliProcessor(DataProcessor):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
     def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
+        """Creates examples for the training, dev and test sets."""
         examples = []
         for (i, line) in enumerate(lines):
             if i == 0:
@@ -513,7 +600,7 @@ class WnliProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, line[0])
             text_a = line[1]
             text_b = line[2]
-            label = line[-1]
+            label = None if set_type == "test" else line[-1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 

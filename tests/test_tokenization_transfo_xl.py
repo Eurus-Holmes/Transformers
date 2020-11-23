@@ -17,20 +17,15 @@
 import os
 import unittest
 
-from transformers import is_torch_available
+from transformers.models.transfo_xl.tokenization_transfo_xl import VOCAB_FILES_NAMES, TransfoXLTokenizer
 
 from .test_tokenization_common import TokenizerTesterMixin
-from .utils import require_torch
 
 
-if is_torch_available():
-    from transformers.tokenization_transfo_xl import TransfoXLTokenizer, VOCAB_FILES_NAMES
-
-
-@require_torch
 class TransfoXLTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
 
-    tokenizer_class = TransfoXLTokenizer if is_torch_available() else None
+    tokenizer_class = TransfoXLTokenizer
+    test_rust_tokenizer = False
 
     def setUp(self):
         super().setUp()
@@ -56,7 +51,7 @@ class TransfoXLTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         kwargs["lower_case"] = True
         return TransfoXLTokenizer.from_pretrained(self.tmpdirname, **kwargs)
 
-    def get_input_output_texts(self):
+    def get_input_output_texts(self, tokenizer):
         input_text = "<unk> UNwanted , running"
         output_text = "<unk> unwanted, running"
         return input_text, output_text
@@ -82,3 +77,54 @@ class TransfoXLTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         self.assertListEqual(
             tokenizer.tokenize(" \tHeLLo ! how  \n Are yoU ?  "), ["HeLLo", "!", "how", "Are", "yoU", "?"]
         )
+
+    def test_full_tokenizer_moses_numbers(self):
+        tokenizer = TransfoXLTokenizer(lower_case=False)
+        text_in = "Hello (bracket) and side-scrolled [and] Henry's $5,000 with 3.34 m. What's up!?"
+        tokens_out = [
+            "Hello",
+            "(",
+            "bracket",
+            ")",
+            "and",
+            "side",
+            "@-@",
+            "scrolled",
+            "[",
+            "and",
+            "]",
+            "Henry",
+            "'s",
+            "$",
+            "5",
+            "@,@",
+            "000",
+            "with",
+            "3",
+            "@.@",
+            "34",
+            "m",
+            ".",
+            "What",
+            "'s",
+            "up",
+            "!",
+            "?",
+        ]
+
+        self.assertListEqual(tokenizer.tokenize(text_in), tokens_out)
+
+        self.assertEqual(tokenizer.convert_tokens_to_string(tokens_out), text_in)
+
+    def test_move_added_token(self):
+        tokenizer = self.get_tokenizer()
+        original_len = len(tokenizer)
+
+        tokenizer.add_tokens(["new1", "new2"])
+        tokenizer.move_added_token("new1", 1)
+
+        # Check that moved token is not copied (duplicate)
+        self.assertEqual(len(tokenizer), original_len + 2)
+        # Check that token is moved to specified id
+        self.assertEqual(tokenizer.encode("new1"), [1])
+        self.assertEqual(tokenizer.decode([1]), "new1")

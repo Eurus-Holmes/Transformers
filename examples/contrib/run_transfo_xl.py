@@ -80,7 +80,7 @@ def main():
 
     # Load a pre-trained model
     model = TransfoXLLMHeadModel.from_pretrained(args.model_name)
-    model = model.to(device)
+    model.to(device)
 
     logger.info(
         "Evaluating with bsz {} tgt_len {} ext_len {} mem_len {} clamp_len {}".format(
@@ -88,7 +88,7 @@ def main():
         )
     )
 
-    model.reset_length(args.tgt_len, args.ext_len, args.mem_len)
+    model.reset_memory_length(args.mem_len)
     if args.clamp_len > 0:
         model.clamp_len = args.clamp_len
     if args.same_length:

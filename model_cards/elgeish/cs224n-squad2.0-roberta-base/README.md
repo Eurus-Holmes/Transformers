@@ -1,5 +1,5 @@
 ## CS224n SQuAD2.0 Project Dataset
-The goal of this model is to save CS224n students GPU time when establising
+The goal of this model is to save CS224n students GPU time when establishing
 baselines to beat for the [Default Final Project](http://web.stanford.edu/class/cs224n/project/default-final-project-handout.pdf).
 The training set used to fine-tune this model is the same as
 the [official one](https://rajpurkar.github.io/SQuAD-explorer/); however,
@@ -64,6 +64,18 @@ used the official SQuAD2.0 dev set for model selection.
   "python": "3.6.5=hc3d631a_2",
   "os": "Linux 4.15.0-1060-aws #62-Ubuntu SMP Tue Feb 11 21:23:22 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux",
   "gpu": "Tesla V100-SXM2-16GB"
+}
+```
+
+## How to Cite
+```BibTeX
+@misc{elgeish2020gestalt,
+  title={Gestalt: a Stacking Ensemble for SQuAD2.0},
+  author={Mohamed El-Geish},
+  journal={arXiv e-prints},
+  archivePrefix={arXiv},
+  eprint={2004.07067},
+  year={2020},
 }
 ```
 

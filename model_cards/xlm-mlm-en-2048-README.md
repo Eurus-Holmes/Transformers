@@ -1,6 +1,10 @@
 ---
 tags:
 - exbert
+
+license: cc-by-nc-4.0
 ---
 
-[![ExBERT](https://img.shields.io/badge/Visualize%20Attentions-ExBERT-green)](https://huggingface.co/exbert/?model=xlm-mlm-en-2048)
+<a href="https://huggingface.co/exbert/?model=xlm-mlm-en-2048">
+	<img width="300px" src="https://cdn-media.huggingface.co/exbert/button.png">
+</a>

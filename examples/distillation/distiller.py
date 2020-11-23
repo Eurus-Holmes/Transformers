@@ -80,7 +80,7 @@ class Distiller:
 
         self.mlm = params.mlm
         if self.mlm:
-            logger.info(f"Using MLM loss for LM step.")
+            logger.info("Using MLM loss for LM step.")
             self.mlm_mask_prop = params.mlm_mask_prop
             assert 0.0 <= self.mlm_mask_prop <= 1.0
             assert params.word_mask + params.word_keep + params.word_rand == 1.0
@@ -91,7 +91,7 @@ class Distiller:
                 self.pred_probs = self.pred_probs.half()
                 self.token_probs = self.token_probs.half()
         else:
-            logger.info(f"Using CLM loss for LM step.")
+            logger.info("Using CLM loss for LM step.")
 
         self.epoch = 0
         self.n_iter = 0
@@ -188,7 +188,7 @@ class Distiller:
 
     def prepare_batch_mlm(self, batch):
         """
-        Prepare the batch: from the token_ids and the lenghts, compute the attention mask and the masked label for MLM.
+        Prepare the batch: from the token_ids and the lengths, compute the attention mask and the masked label for MLM.
 
         Input:
         ------
@@ -200,7 +200,7 @@ class Distiller:
         -------
             token_ids: `torch.tensor(bs, seq_length)` - The token ids after the modifications for MLM.
             attn_mask: `torch.tensor(bs, seq_length)` - The attention mask for the self-attention.
-            mlm_labels: `torch.tensor(bs, seq_length)` - The masked languge modeling labels. There is a -100 where there is nothing to predict.
+            mlm_labels: `torch.tensor(bs, seq_length)` - The masked language modeling labels. There is a -100 where there is nothing to predict.
         """
         token_ids, lengths = batch
         token_ids, lengths = self.round_batch(x=token_ids, lengths=lengths)
@@ -253,7 +253,7 @@ class Distiller:
 
     def prepare_batch_clm(self, batch):
         """
-        Prepare the batch: from the token_ids and the lenghts, compute the attention mask and the labels for CLM.
+        Prepare the batch: from the token_ids and the lengths, compute the attention mask and the labels for CLM.
 
         Input:
         ------
@@ -265,7 +265,7 @@ class Distiller:
         -------
             token_ids: `torch.tensor(bs, seq_length)` - The token ids after the modifications for MLM.
             attn_mask: `torch.tensor(bs, seq_length)` - The attention mask for the self-attention.
-            clm_labels: `torch.tensor(bs, seq_length)` - The causal languge modeling labels. There is a -100 where there is nothing to predict.
+            clm_labels: `torch.tensor(bs, seq_length)` - The causal language modeling labels. There is a -100 where there is nothing to predict.
         """
         token_ids, lengths = batch
         token_ids, lengths = self.round_batch(x=token_ids, lengths=lengths)
@@ -365,8 +365,8 @@ class Distiller:
             self.end_epoch()
 
         if self.is_master:
-            logger.info(f"Save very last checkpoint as `pytorch_model.bin`.")
-            self.save_checkpoint(checkpoint_name=f"pytorch_model.bin")
+            logger.info("Save very last checkpoint as `pytorch_model.bin`.")
+            self.save_checkpoint(checkpoint_name="pytorch_model.bin")
             logger.info("Training is finished")
 
     def step(self, input_ids: torch.tensor, attention_mask: torch.tensor, lm_labels: torch.tensor):
@@ -401,9 +401,9 @@ class Distiller:
         # https://github.com/peterliht/knowledge-distillation-pytorch/blob/master/model/net.py#L100
         # https://github.com/peterliht/knowledge-distillation-pytorch/issues/2
         if self.params.restrict_ce_to_mask:
-            mask = (lm_labels > -1).unsqueeze(-1).expand_as(s_logits)  # (bs, seq_lenth, voc_size)
+            mask = (lm_labels > -1).unsqueeze(-1).expand_as(s_logits)  # (bs, seq_length, voc_size)
         else:
-            mask = attention_mask.unsqueeze(-1).expand_as(s_logits)  # (bs, seq_lenth, voc_size)
+            mask = attention_mask.unsqueeze(-1).expand_as(s_logits)  # (bs, seq_length, voc_size)
         s_logits_slct = torch.masked_select(s_logits, mask)  # (bs * seq_length * voc_size) modulo the 1s in mask
         s_logits_slct = s_logits_slct.view(-1, s_logits.size(-1))  # (bs * seq_length, voc_size) modulo the 1s in mask
         t_logits_slct = torch.masked_select(t_logits, mask)  # (bs * seq_length * voc_size) modulo the 1s in mask

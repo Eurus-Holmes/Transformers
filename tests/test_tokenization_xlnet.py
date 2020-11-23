@@ -17,33 +17,30 @@
 import os
 import unittest
 
-from transformers.tokenization_xlnet import SPIECE_UNDERLINE, XLNetTokenizer
+from transformers import SPIECE_UNDERLINE, XLNetTokenizer, XLNetTokenizerFast
+from transformers.testing_utils import require_sentencepiece, require_tokenizers, slow
 
 from .test_tokenization_common import TokenizerTesterMixin
-from .utils import slow
 
 
 SAMPLE_VOCAB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures/test_sentencepiece.model")
 
 
+@require_sentencepiece
+@require_tokenizers
 class XLNetTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
 
     tokenizer_class = XLNetTokenizer
+    rust_tokenizer_class = XLNetTokenizerFast
+    test_rust_tokenizer = True
 
     def setUp(self):
         super().setUp()
 
         # We have a SentencePiece fixture for testing
         tokenizer = XLNetTokenizer(SAMPLE_VOCAB, keep_accents=True)
+        tokenizer.sanitize_special_tokens()
         tokenizer.save_pretrained(self.tmpdirname)
-
-    def get_tokenizer(self, **kwargs):
-        return XLNetTokenizer.from_pretrained(self.tmpdirname, **kwargs)
-
-    def get_input_output_texts(self):
-        input_text = "This is a test"
-        output_text = "This is a test"
-        return input_text, output_text
 
     def test_full_tokenizer(self):
         tokenizer = XLNetTokenizer(SAMPLE_VOCAB, keep_accents=True)
