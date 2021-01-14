@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors.
+# Copyright 2020 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -328,6 +328,10 @@ class LongformerModelTest(ModelTesterMixin, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_for_multiple_choice(*config_and_inputs)
 
+    def test_retain_grad_hidden_states_attentions(self):
+        # longformer cannot keep gradients in attentions or hidden states
+        return
+
 
 @require_torch
 @require_sentencepiece
@@ -484,13 +488,13 @@ class LongformerModelIntegrationTest(unittest.TestCase):
         is_index_global_attn = attention_mask > 0
         is_global_attn = is_index_global_attn.flatten().any().item()
 
-        output_hidden_states, _ = layer(
+        output_hidden_states = layer(
             hidden_states,
             attention_mask=attention_mask,
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
             is_global_attn=is_global_attn,
-        )
+        )[0]
 
         self.assertTrue(output_hidden_states.shape, (1, 4, 8))
         self.assertTrue(
@@ -522,13 +526,13 @@ class LongformerModelIntegrationTest(unittest.TestCase):
         is_index_global_attn = attention_mask > 0
         is_global_attn = is_index_global_attn.flatten().any().item()
 
-        output_hidden_states, _, _ = layer(
+        output_hidden_states = layer(
             hidden_states,
             attention_mask=attention_mask,
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
             is_global_attn=is_global_attn,
-        )
+        )[0]
 
         self.assertTrue(output_hidden_states.shape, (2, 4, 8))
 
@@ -579,6 +583,7 @@ class LongformerModelIntegrationTest(unittest.TestCase):
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
             is_global_attn=is_global_attn,
+            output_attentions=True,
         )
 
         self.assertEqual(local_attentions.shape, (2, 4, 2, 8))

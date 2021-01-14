@@ -424,7 +424,6 @@ def _compute_global_attention_mask(input_ids, sep_token_id, before_sep_token=Tru
     return attention_mask
 
 
-# Copied from transformers.models.roberta.modeling_roberta.create_position_ids_from_input_ids
 def create_position_ids_from_input_ids(input_ids, padding_idx):
     """
     Replace non-padding symbols with their position numbers. Position numbers begin at padding_idx+1. Padding symbols
@@ -446,7 +445,6 @@ class LongformerEmbeddings(nn.Module):
     Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
     """
 
-    # Copied from transformers.models.bert.modeling_bert.BertEmbeddings.__init__
     def __init__(self, config):
         super().__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
@@ -460,8 +458,8 @@ class LongformerEmbeddings(nn.Module):
 
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
+        self.position_embedding_type = getattr(config, "position_embedding_type", "absolute")
 
-        # End copy
         self.padding_idx = config.pad_token_id
         self.position_embeddings = nn.Embedding(
             config.max_position_embeddings, config.hidden_size, padding_idx=self.padding_idx
@@ -475,7 +473,6 @@ class LongformerEmbeddings(nn.Module):
             else:
                 position_ids = self.create_position_ids_from_inputs_embeds(inputs_embeds)
 
-        # Copied from transformers.models.bert.modeling_bert.BertEmbeddings.forward
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -552,17 +549,23 @@ class LongformerSelfAttention(nn.Module):
         self.one_sided_attn_window_size = attention_window // 2
 
     def forward(
-        self, hidden_states, attention_mask=None, is_index_masked=None, is_index_global_attn=None, is_global_attn=None
+        self,
+        hidden_states,
+        attention_mask=None,
+        is_index_masked=None,
+        is_index_global_attn=None,
+        is_global_attn=None,
+        output_attentions=False,
     ):
         """
-        LongformerSelfAttention expects `len(hidden_states)` to be multiple of `attention_window`. Padding to
-        `attention_window` happens in LongformerModel.forward to avoid redoing the padding on each layer.
+        :class:`LongformerSelfAttention` expects `len(hidden_states)` to be multiple of `attention_window`. Padding to
+        `attention_window` happens in :meth:`LongformerModel.forward` to avoid redoing the padding on each layer.
 
-        The `attention_mask` is changed in `BertModel.forward` from 0, 1, 2 to -ve: no attention
+        The `attention_mask` is changed in :meth:`LongformerModel.forward` from 0, 1, 2 to:
 
-              0: local attention
-            +ve: global attention
-
+            * -10000: no attention
+            * 0: local attention
+            * +10000: global attention
         """
         hidden_states = hidden_states.transpose(0, 1)
 
@@ -634,17 +637,17 @@ class LongformerSelfAttention(nn.Module):
             # free memory
             del global_key_attn_scores
 
-        local_attn_probs_fp32 = F.softmax(attn_scores, dim=-1, dtype=torch.float32)  # use fp32 for numerical stability
-        local_attn_probs = local_attn_probs_fp32.type_as(attn_scores)
-
-        # free memory
-        del local_attn_probs_fp32
+        attn_probs = F.softmax(attn_scores, dim=-1, dtype=torch.float32)  # use fp32 for numerical stability
 
         # softmax sometimes inserts NaN if all positions are masked, replace them with 0
-        local_attn_probs = torch.masked_fill(local_attn_probs, is_index_masked[:, :, None, None], 0.0)
+        attn_probs = torch.masked_fill(attn_probs, is_index_masked[:, :, None, None], 0.0)
+        attn_probs = attn_probs.type_as(attn_scores)
+
+        # free memory
+        del attn_scores
 
         # apply dropout
-        local_attn_probs = F.dropout(local_attn_probs, p=self.dropout, training=self.training)
+        attn_probs = F.dropout(attn_probs, p=self.dropout, training=self.training)
 
         value_vectors = value_vectors.view(seq_len, batch_size, self.num_heads, self.head_dim).transpose(0, 1)
 
@@ -653,7 +656,7 @@ class LongformerSelfAttention(nn.Module):
             # compute sum of global and local attn
             attn_output = self._compute_attn_output_with_global_indices(
                 value_vectors=value_vectors,
-                attn_probs=local_attn_probs,
+                attn_probs=attn_probs,
                 max_num_global_attn_indices=max_num_global_attn_indices,
                 is_index_global_attn_nonzero=is_index_global_attn_nonzero,
                 is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
@@ -661,7 +664,7 @@ class LongformerSelfAttention(nn.Module):
         else:
             # compute local attn only
             attn_output = self._sliding_chunks_matmul_attn_probs_value(
-                local_attn_probs, value_vectors, self.one_sided_attn_window_size
+                attn_probs, value_vectors, self.one_sided_attn_window_size
             )
 
         assert attn_output.size() == (batch_size, seq_len, self.num_heads, self.head_dim), "Unexpected size"
@@ -691,11 +694,14 @@ class LongformerSelfAttention(nn.Module):
             # The attention weights for tokens with global attention are
             # just filler values, they were never used to compute the output.
             # Fill with 0 now, the correct values are in 'global_attn_probs'.
-            local_attn_probs[is_index_global_attn_nonzero] = 0
+            attn_probs[is_index_global_attn_nonzero] = 0
 
-        outputs = (attn_output.transpose(0, 1), local_attn_probs)
+        outputs = (attn_output.transpose(0, 1),)
 
-        return outputs + (global_attn_probs,) if is_global_attn else outputs
+        if output_attentions:
+            outputs += (attn_probs,)
+
+        return outputs + (global_attn_probs,) if (is_global_attn and output_attentions) else outputs
 
     @staticmethod
     def _pad_and_transpose_last_two_dims(hidden_states_padded, padding):
@@ -714,6 +720,7 @@ class LongformerSelfAttention(nn.Module):
         shift every row 1 step right, converting columns into diagonals.
 
         Example::
+
               chunked_hidden_states: [ 0.4983,  2.6918, -0.0071,  1.0492,
                                        -1.8348,  0.7672,  0.2986,  0.0285,
                                        -0.7584,  0.4206, -0.0405,  0.1599,
@@ -731,13 +738,13 @@ class LongformerSelfAttention(nn.Module):
         )  # total_num_heads x num_chunks x window_overlap x (hidden_dim+window_overlap+1). Padding value is not important because it'll be overwritten
         chunked_hidden_states = chunked_hidden_states.view(
             total_num_heads, num_chunks, -1
-        )  # total_num_heads x num_chunks x window_overlapL+window_overlapwindow_overlap+window_overlap
+        )  # total_num_heads x num_chunks x window_overlap*window_overlap+window_overlap
         chunked_hidden_states = chunked_hidden_states[
             :, :, :-window_overlap
-        ]  # total_num_heads x num_chunks x window_overlapL+window_overlapwindow_overlap
+        ]  # total_num_heads x num_chunks x window_overlap*window_overlap
         chunked_hidden_states = chunked_hidden_states.view(
             total_num_heads, num_chunks, window_overlap, window_overlap + hidden_dim
-        )  # total_num_heads x num_chunks, window_overlap x hidden_dim+window_overlap
+        )
         chunked_hidden_states = chunked_hidden_states[:, :, :, :-1]
         return chunked_hidden_states
 
@@ -791,18 +798,18 @@ class LongformerSelfAttention(nn.Module):
         query = query.transpose(1, 2).reshape(batch_size * num_heads, seq_len, head_dim)
         key = key.transpose(1, 2).reshape(batch_size * num_heads, seq_len, head_dim)
 
-        chunked_query = self._chunk(query, window_overlap)
-        chunked_key = self._chunk(key, window_overlap)
+        query = self._chunk(query, window_overlap)
+        key = self._chunk(key, window_overlap)
 
         # matrix multiplication
         # bcxd: batch_size * num_heads x chunks x 2window_overlap x head_dim
         # bcyd: batch_size * num_heads x chunks x 2window_overlap x head_dim
         # bcxy: batch_size * num_heads x chunks x 2window_overlap x window_overlap
-        chunked_attention_scores = torch.einsum("bcxd,bcyd->bcxy", (chunked_query, chunked_key))  # multiply
+        diagonal_chunked_attention_scores = torch.einsum("bcxd,bcyd->bcxy", (query, key))  # multiply
 
         # convert diagonals into columns
         diagonal_chunked_attention_scores = self._pad_and_transpose_last_two_dims(
-            chunked_attention_scores, padding=(0, 0, 0, 1)
+            diagonal_chunked_attention_scores, padding=(0, 0, 0, 1)
         )
 
         # allocate space for the overall attention matrix where the chunks are combined. The last dimension
@@ -1098,7 +1105,13 @@ class LongformerAttention(nn.Module):
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def forward(
-        self, hidden_states, attention_mask=None, is_index_masked=None, is_index_global_attn=None, is_global_attn=None
+        self,
+        hidden_states,
+        attention_mask=None,
+        is_index_masked=None,
+        is_index_global_attn=None,
+        is_global_attn=None,
+        output_attentions=False,
     ):
         self_outputs = self.self(
             hidden_states,
@@ -1106,6 +1119,7 @@ class LongformerAttention(nn.Module):
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
             is_global_attn=is_global_attn,
+            output_attentions=output_attentions,
         )
         attn_output = self.output(self_outputs[0], hidden_states)
         outputs = (attn_output,) + self_outputs[1:]
@@ -1153,7 +1167,13 @@ class LongformerLayer(nn.Module):
         self.seq_len_dim = 1
 
     def forward(
-        self, hidden_states, attention_mask=None, is_index_masked=None, is_index_global_attn=None, is_global_attn=None
+        self,
+        hidden_states,
+        attention_mask=None,
+        is_index_masked=None,
+        is_index_global_attn=None,
+        is_global_attn=None,
+        output_attentions=False,
     ):
         self_attn_outputs = self.attention(
             hidden_states,
@@ -1161,6 +1181,7 @@ class LongformerLayer(nn.Module):
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
             is_global_attn=is_global_attn,
+            output_attentions=output_attentions,
         )
         attn_output = self_attn_outputs[0]
         outputs = self_attn_outputs[1:]
@@ -1208,7 +1229,7 @@ class LongformerEncoder(nn.Module):
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
-                        return module(*inputs, is_global_attn)
+                        return module(*inputs, is_global_attn, output_attentions)
 
                     return custom_forward
 
@@ -1226,6 +1247,7 @@ class LongformerEncoder(nn.Module):
                     is_index_masked=is_index_masked,
                     is_index_global_attn=is_index_global_attn,
                     is_global_attn=is_global_attn,
+                    output_attentions=output_attentions,
                 )
             hidden_states = layer_outputs[0]
 
@@ -1303,7 +1325,7 @@ class LongformerPreTrainedModel(PreTrainedModel):
 
     config_class = LongformerConfig
     base_model_prefix = "longformer"
-    authorized_missing_keys = [r"position_ids"]
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def _init_weights(self, module):
         """ Initialize the weights """
@@ -1621,7 +1643,7 @@ class LongformerModel(LongformerPreTrainedModel):
 @add_start_docstrings("""Longformer Model with a `language modeling` head on top. """, LONGFORMER_START_DOCSTRING)
 class LongformerForMaskedLM(LongformerPreTrainedModel):
 
-    authorized_unexpected_keys = [r"pooler"]
+    _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
         super().__init__(config)
@@ -1633,6 +1655,9 @@ class LongformerForMaskedLM(LongformerPreTrainedModel):
 
     def get_output_embeddings(self):
         return self.lm_head.decoder
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head.decoder = new_embeddings
 
     @add_start_docstrings_to_model_forward(LONGFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @replace_return_docstrings(output_type=LongformerMaskedLMOutput, config_class=_CONFIG_FOR_DOC)
@@ -1718,7 +1743,7 @@ class LongformerForMaskedLM(LongformerPreTrainedModel):
 )
 class LongformerForSequenceClassification(LongformerPreTrainedModel):
 
-    authorized_unexpected_keys = [r"pooler"]
+    _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
         super().__init__(config)
@@ -1827,7 +1852,7 @@ class LongformerClassificationHead(nn.Module):
 )
 class LongformerForQuestionAnswering(LongformerPreTrainedModel):
 
-    authorized_unexpected_keys = [r"pooler"]
+    _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
         super().__init__(config)
@@ -1961,7 +1986,7 @@ class LongformerForQuestionAnswering(LongformerPreTrainedModel):
 )
 class LongformerForTokenClassification(LongformerPreTrainedModel):
 
-    authorized_unexpected_keys = [r"pooler"]
+    _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
         super().__init__(config)
